@@ -1,0 +1,50 @@
+exception 'Exception' with message 'Invalid signature' in E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\common\vendor\pay\wxpay_jsapi\wxpay_jsapi.php:97
+Stack trace:
+#0 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\common\vendor\pay\wxpay_jsapi\wxpay_jsapi.php(51): wxpay_jsapi->onNotify()
+#1 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\front\shop\controller\payment.php(62): wxpay_jsapi->notify()
+#2 [internal function]: shop\controller\payment->notifyOp()
+#3 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\base\dispatcherUrl.php(108): ReflectionMethod->invoke(Object(shop\controller\payment))
+#4 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\base\base.php(26): base\dispatcherUrl::dispatch()
+#5 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\index.php(29): base\base::start()
+#6 E:\www\kehu\wsstore.yingxiao567.cn\front.php(23): require('E:\www\kehu\wss...')
+#7 {main}
+exception 'Exception' with message 'Invalid signature' in E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\common\vendor\pay\wxpay_jsapi\wxpay_jsapi.php:97
+Stack trace:
+#0 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\common\vendor\pay\wxpay_jsapi\wxpay_jsapi.php(51): wxpay_jsapi->onNotify()
+#1 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\front\shop\controller\payment.php(62): wxpay_jsapi->notify()
+#2 [internal function]: shop\controller\payment->notifyOp()
+#3 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\base\dispatcherUrl.php(108): ReflectionMethod->invoke(Object(shop\controller\payment))
+#4 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\base\base.php(26): base\dispatcherUrl::dispatch()
+#5 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\index.php(29): base\base::start()
+#6 E:\www\kehu\wsstore.yingxiao567.cn\front.php(23): require('E:\www\kehu\wss...')
+#7 {main}
+exception 'Exception' with message 'Invalid signature' in E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\common\vendor\pay\wxpay_jsapi\wxpay_jsapi.php:97
+Stack trace:
+#0 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\common\vendor\pay\wxpay_jsapi\wxpay_jsapi.php(51): wxpay_jsapi->onNotify()
+#1 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\front\shop\controller\payment.php(62): wxpay_jsapi->notify()
+#2 [internal function]: shop\controller\payment->notifyOp()
+#3 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\base\dispatcherUrl.php(108): ReflectionMethod->invoke(Object(shop\controller\payment))
+#4 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\base\base.php(26): base\dispatcherUrl::dispatch()
+#5 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\index.php(29): base\base::start()
+#6 E:\www\kehu\wsstore.yingxiao567.cn\front.php(23): require('E:\www\kehu\wss...')
+#7 {main}
+exception 'Exception' with message 'Invalid signature' in E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\common\vendor\pay\wxpay_jsapi\wxpay_jsapi.php:97
+Stack trace:
+#0 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\common\vendor\pay\wxpay_jsapi\wxpay_jsapi.php(51): wxpay_jsapi->onNotify()
+#1 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\front\shop\controller\payment.php(62): wxpay_jsapi->notify()
+#2 [internal function]: shop\controller\payment->notifyOp()
+#3 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\base\dispatcherUrl.php(108): ReflectionMethod->invoke(Object(shop\controller\payment))
+#4 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\base\base.php(26): base\dispatcherUrl::dispatch()
+#5 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\index.php(29): base\base::start()
+#6 E:\www\kehu\wsstore.yingxiao567.cn\front.php(23): require('E:\www\kehu\wss...')
+#7 {main}
+exception 'Exception' with message 'Invalid signature' in E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\common\vendor\pay\wxpay_jsapi\wxpay_jsapi.php:97
+Stack trace:
+#0 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\common\vendor\pay\wxpay_jsapi\wxpay_jsapi.php(51): wxpay_jsapi->onNotify()
+#1 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\front\shop\controller\payment.php(62): wxpay_jsapi->notify()
+#2 [internal function]: shop\controller\payment->notifyOp()
+#3 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\base\dispatcherUrl.php(108): ReflectionMethod->invoke(Object(shop\controller\payment))
+#4 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\base\base.php(26): base\dispatcherUrl::dispatch()
+#5 E:\www\kehu\wsstore.yingxiao567.cn\addons\shop\core\index.php(29): base\base::start()
+#6 E:\www\kehu\wsstore.yingxiao567.cn\front.php(23): require('E:\www\kehu\wss...')
+#7 {main}
