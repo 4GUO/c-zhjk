@@ -363,6 +363,16 @@ $menu_list = array(
 						'op' => 'print_order'
 					),
 					array(
+						'name' => '发放复购见单奖励',
+						'act' => 'shop_order',
+						'op' => 'grant_reward'
+					),
+					array(
+						'name' => '收回复购见单奖励',
+						'act' => 'shop_order',
+						'op' => 'revoke_reward'
+					),
+					array(
 						'name' => '选择物流公司',
 						'act' => 'shop_deliver',
 						'op' => 'waybill_express'
@@ -502,6 +512,16 @@ $menu_list = array(
                 'name' => '分红明细记录',
                 'act' => 'distribute_award',
                 'op' => 'fenhong_index'
+            ) ,
+			array(
+                'name' => '复购见单奖励',
+                'act' => 'distribute_award',
+                'op' => 'fgjdjl_index'
+            ) ,
+			array(
+                'name' => '复购见单奖励日志',
+                'act' => 'distribute_award',
+                'op' => 'fgjdjl_log'
             ) ,
 			array(
                 'name' => '商品分销记录',

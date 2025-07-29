@@ -475,4 +475,45 @@ class shop_order extends control {
 			$this->display();
 		}
     }
+    
+    /**
+     * 发放复购见单奖励
+     */
+    public function grant_rewardOp(){
+        $order_id = input('order_id', 0, 'intval');
+        $model_order = model('shop_order');
+        $condition = array();
+        $condition['order_id'] = $order_id;
+        $order_info = $model_order->getInfo($condition, array('member'));
+		if (empty($order_info['order_id'])) {
+            output_error('订单不存在！');
+        }
+        // 记录奖励发放日志
+        $result = logic('yewu')->deal_fugou_reward($order_info);
+        if($result !== true){
+            output_error($result);
+        }
+        output_data(array('msg' => '奖励发放成功'));
+    }
+
+    /**
+     * 收回复购见单奖励
+     */
+    public function revoke_rewardOp(){
+        $order_id = input('order_id', 0, 'intval');
+        $model_order = model('shop_order');
+        $condition = array();
+        $condition['order_id'] = $order_id;
+        $order_info = $model_order->getInfo($condition, array('member'));
+		if (empty($order_info['order_id'])) {
+            output_error('订单不存在！');
+        }
+        
+        // 记录奖励收回日志
+        $result = logic('yewu')->deal_fugou_revoke($order_info);
+        if($result !== true){
+            output_error($result);
+        }
+        output_data(array('msg' => '奖励收回成功'));
+    }
 }

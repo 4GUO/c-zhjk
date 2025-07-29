@@ -184,6 +184,18 @@
 				
 				<?php if ($val['if_lock']) {?>
 				<p><?php echo '退款退货中';?></p>
+				<?php }?>
+				
+				<!-- 发放复购见单奖励 -->
+				
+				<?php if (in_array($val['order_state'], array(ORDER_STATE_PAY, ORDER_STATE_SEND, ORDER_STATE_SUCCESS))) { ?>
+				<p><a href='javascript:void(0)' class='css-btn css-btn-purple mt10' onclick="grantReward(<?php echo $val['order_id']; ?>)" id='order<?php echo $val['order_id']; ?>_action_grant_reward'><i class='icon-gift'></i>发放见单奖</a></p>
+				<?php }?>
+				
+				<!-- 收回复购见单奖励 -->
+				
+				<?php if (in_array($val['order_state'], array(ORDER_STATE_PAY, ORDER_STATE_SEND, ORDER_STATE_SUCCESS))) { ?>
+				<p><a href='javascript:void(0)' class='css-btn css-btn-purple mt10' onclick="revokeReward(<?php echo $val['order_id']; ?>)" id='order<?php echo $val['order_id']; ?>_action_revoke_reward'><i class='icon-undo'></i>收回见单奖</a></p>
 				<?php }?></td>
 			<?php } ?>
 		</tr>
@@ -236,4 +248,60 @@ $('#export').click(function() {
 		i++;
 	}, 2000);
 });
+
+// 发放复购见单奖励
+function grantReward(orderId) {
+	if (confirm('确定要发放复购见单奖励吗？')) {
+		$.ajax({
+			url: '<?=users_url('shop_order/grant_reward')?>',
+			type: 'POST',
+			data: {
+				order_id: orderId,
+				form_submit: 'ok'
+			},
+			dataType: 'json',
+			success: function(response) {
+				if (response.state == 400) {
+					alert('操作失败：' + response.msg);
+				} else if (response.state) {
+					alert('奖励发放成功！');
+					location.reload();
+				} else {
+					alert('操作失败：' + response.msg);
+				}
+			},
+			error: function() {
+				alert('网络错误，请重试！');
+			}
+		});
+	}
+}
+
+// 收回复购见单奖励
+function revokeReward(orderId) {
+	if (confirm('确定要收回复购见单奖励吗？')) {
+		$.ajax({
+			url: '<?=users_url('shop_order/revoke_reward')?>',
+			type: 'POST',
+			data: {
+				order_id: orderId,
+				form_submit: 'ok'
+			},
+			dataType: 'json',
+			success: function(response) {
+				if (response.state == 400) {
+					alert('操作失败：' + response.msg);
+				} else if (response.state) {
+					alert('奖励收回成功！');
+					location.reload();
+				} else {
+					alert('操作失败：' + response.msg);
+				}
+			},
+			error: function() {
+				alert('网络错误，请重试！');
+			}
+		});
+	}
+}
 </script>

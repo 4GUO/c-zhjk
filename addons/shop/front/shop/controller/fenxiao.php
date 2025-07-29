@@ -333,6 +333,63 @@ class fenxiao extends member {
 			output_data($return);
 		}
 	}
+	
+	//复购见单奖励记录
+	public function fgjdjl_recordOp() {
+		if(IS_API){
+			$this->title = '复购见单奖励';
+			$start_time = input('start_time', '');
+			$end_time = input('end_time', '');
+			$model_distribute_detail = model('distribute_fgjdjl_record_detail');
+			//状态
+			$_STATUS = array(
+				10 => '已发放',
+				20 => '已退回'
+			);
+			
+			$lists = array();
+			
+			$total_money = 0;
+			//获得佣金记录
+			$where = array();
+			$where['detail_status'] = 10; // 已发放
+			$where['uniacid'] = $this->uniacid;
+			$where['uid'] = $this->member_info['uid'];
+			if($start_time){
+				$where['detail_addtime >='] = $start_time . ' 00:00:00';
+			}
+			if($end_time){
+				$where['detail_addtime <='] = $end_time . ' 23:59:59';
+			}
+			$r = $model_distribute_detail->getInfo($where, 'SUM(detail_bonus) as money');
+			$total_money = empty($r['money']) ? 0 : $r['money'];
+			$where['detail_status'] = array(10, 20); // 已发放和已退回
+			$record_list = $model_distribute_detail->getList($where, '*', 'detail_id desc', 20, input('page', 1, 'intval'));
+			foreach($record_list['list'] as $key=>$value){
+				$lists[] = array(
+					'money' => $value['detail_bonus'],
+					'status' => $_STATUS[$value['detail_status']],
+					'record_status' => $value['detail_status'],
+					'desc' => $value['detail_desc'],
+					'addtime' => $value['detail_addtime'],
+					'order_sn' => $value['order_sn'],
+					'order_amount' => $value['order_amount'],
+					'user_orders' => $value['user_orders'],
+					'parent_orders' => $value['parent_orders'],
+					'from_nickname' => $value['from_nickname']
+				);
+			}
+			$return = array(
+				'title' => $this->title,
+				'total_money' => $total_money,
+				'list' => $lists,
+				'totalpage' => $record_list['totalpage'],
+				'hasmore' => $record_list['hasmore'],
+			);
+			output_data($return);
+		}
+	}
+	
 	/*提现部分*/
 	public function widthdraw_method_listOp() {
 		if (IS_API) {
