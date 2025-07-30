@@ -31,19 +31,34 @@
 	height: 100%;
 }
 .search_btn {
-	padding: 5px 10px;
-	background: #F5F5F5;
-	color: #777777;
+    padding: 5px 10px;
+    background: #F5F5F5;
+    color: #777777;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.search_btn:hover {
+    background: #E6E6E6;
+}
+.nav {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 20px;
+}
+.nav .text {
+    width: 70%;
+    margin-right: 10px;
 }
 </style>
 <div class='goods-gallery'>
-	<div class='nav'>
-	    <span class='l'>
-			<input class='text w100' name='mobile_s' placeholder='手机号' value='' type='text'>&nbsp;&nbsp;<a href='javascript:;' class='search_btn'>搜索</a>
-		</span>
-	</div>
-	<div id='list'></div>
-	<div class='pagination'></div>
+    <div class='nav'>
+        <input class='text w100' name='mobile_s' placeholder='手机号' value='' type='text'>
+        <a href='javascript:;' class='search_btn'>搜索</a>
+    </div>
+    <div id='list'></div>
+    <div class='pagination'></div>
 </div>
 <script>
 var input_name = '<?=input('input_name', '')?>';
@@ -104,7 +119,7 @@ function select_page(url, data){
 		}
 	});
 }
-	
+
 $(function(){
 	select_page('<?=users_url('member/selectUser')?>', {page: 1, uid: ext_uid});
 	$('.search_btn').click(function() {
