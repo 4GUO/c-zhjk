@@ -488,11 +488,16 @@ class shop_order extends control {
 		if (empty($order_info['order_id'])) {
             output_error('订单不存在！');
         }
+		$model = model();
+        $model->beginTransaction();
         // 记录奖励发放日志
         $result = logic('yewu')->deal_fugou_reward($order_info);
         if($result !== true){
+            $model->rollBack();
             output_error($result);
         }
+		// 提交
+		$model->commit();
         output_data(array('msg' => '奖励发放成功'));
     }
 
@@ -504,16 +509,24 @@ class shop_order extends control {
         $model_order = model('shop_order');
         $condition = array();
         $condition['order_id'] = $order_id;
+		
+
         $order_info = $model_order->getInfo($condition, array('member'));
 		if (empty($order_info['order_id'])) {
             output_error('订单不存在！');
         }
         
+		$model = model();
+        $model->beginTransaction();
+
         // 记录奖励收回日志
         $result = logic('yewu')->deal_fugou_revoke($order_info);
         if($result !== true){
+            $model->rollBack();
             output_error($result);
         }
+		// 提交
+		$model->commit();
         output_data(array('msg' => '奖励收回成功'));
     }
 }

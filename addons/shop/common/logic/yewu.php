@@ -180,8 +180,7 @@ class yewu
         }
 
         // 开启事务
-        $model = model();
-        $model->beginTransaction();
+        
         // 退回奖励
         foreach ($detail_list as $v) {
             $desc = '用户' . $v['from_nickname'] . '退款，您获得的复购见单奖励' . $v['detail_bonus'] . '元退回';
@@ -197,7 +196,7 @@ class yewu
             //更新 distribute_fgjdjl_record_detail 状态和退款时间
             model('distribute_fgjdjl_record_detail')->where(array('detail_id' => $v['detail_id']))->update(array('detail_status' => 20, 'detail_addtime' => date('Y-m-d H:i:s')));
         }
-        $model->commit();
+        
         return true;
     }
 

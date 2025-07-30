@@ -302,6 +302,10 @@ class shop_return extends control {
     					$order_common = model('shop_order_common')->where(array('order_sn' => $order_info['order_sn']))->find();
     				}
     				model('voucher')->edit(array('voucher_id' => $order_common['voucher_id']), array('voucher_state' => 1));
+    				
+    				// 收回复购见单奖励
+    				logic('yewu')->deal_fugou_revoke($order_info);  		
+    				
     				$model->commit();
     				if ($refund_type == 'online') {
         				output_data('退款成功');
