@@ -17,20 +17,22 @@ class yewu
     // 返回用户信息
     public function get_fgjdjl_user_info($puid, $fgjdjl_nums)
     {
+
         for ($i = 1; $i <= $fgjdjl_nums; $i++) {
             $user_info = model('member')->where(array('uid' => $puid))->find();
             if (!$user_info) {
                 return false;
             }
             if ($user_info['inviter_id'] == 0) {
-                return false;
+                return $user_info;
             }
             if ($user_info['inviter_id'] == $puid) {
-                return false;
+                return $user_info;
             }
             $puid = $user_info['inviter_id'];
         }
-        return $user_info;
+
+        return $user_info ?? false;
     }
 
     // 计算用户的复购见单次数
@@ -73,6 +75,9 @@ class yewu
     public function deal_fugou_reward($order_info)
     {
 
+        $file_path = BASE_PATH . '/data/fgjdjl1_log.txt';
+        file_put_contents($file_path, "订单信息\r\n", FILE_APPEND);
+        file_put_contents($file_path, json_encode($order_info, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT ),FILE_APPEND);
 
         $buyer_info = model('member')->where(array('uid' => $order_info['uid']))->find();
         if (!$buyer_info) {
@@ -123,10 +128,6 @@ class yewu
         // 给用户发放奖励。写入奖励明细记录，写清楚奖励的计算过程
         $fgjdjl_moeny = $level_info['fgjdjl'];
 
-
-        // 开启事务
-        $model = model();
-        $model->beginTransaction();
         // 写入奖励明细记录
 
         $desc = '用户' . $buyer_info['nickname'] . '第' . $user_buy_nums . '次购买，您获得复购见单奖励' . $fgjdjl_moeny . '元';
@@ -147,7 +148,7 @@ class yewu
             'user_orders' => $user_buy_nums,
             'parent_orders' => $parent_user_buy_nums,
             'create_date' => date('Y-m-d H:i:s'),
-            'update_date' => null
+            'update_date' => date('Y-m-d H:i:s')
         );
 
 
@@ -166,7 +167,6 @@ class yewu
             // 记录日志
             $this->fgjdjl_log($order_info, $user_buy_nums, '成功发放复购见单奖励' . $fgjdjl_moeny . '元给用户 【' . $parent_user_info['uid'] . '】【' . $parent_user_info['nickname'] . '】');
         }
-        $model->commit();
         return true;
     }
 
@@ -180,7 +180,7 @@ class yewu
         }
 
         // 开启事务
-        
+
         // 退回奖励
         foreach ($detail_list as $v) {
             $desc = '用户' . $v['from_nickname'] . '退款，您获得的复购见单奖励' . $v['detail_bonus'] . '元退回';
@@ -196,7 +196,7 @@ class yewu
             //更新 distribute_fgjdjl_record_detail 状态和退款时间
             model('distribute_fgjdjl_record_detail')->where(array('detail_id' => $v['detail_id']))->update(array('detail_status' => 20, 'detail_addtime' => date('Y-m-d H:i:s')));
         }
-        
+
         return true;
     }
 

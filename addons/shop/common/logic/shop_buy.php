@@ -872,6 +872,7 @@ class shop_buy
 			logic('yewu')->deal_baodan_reward($order_info);
             //复购见单奖励
             logic('yewu')->deal_fugou_reward($order_info);
+
 			//logic('yewu')->deal_area_reward($order_info);
         }
 		//logic('yewu')->add_distributer($buyer_id, $goods_commonids, $pay_amount);//购买成为分销商

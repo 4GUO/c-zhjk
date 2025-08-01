@@ -28,7 +28,7 @@ class control extends base\controller {
 			}
 			*/
 		}
-		
+
 		//lib\logging::write(var_export(array_merge(input('get.'), input('post.')), true));
 		$this->uniacid = input('get.i', 1, 'intval') ? input('get.i', 1, 'intval') : input('post.i', 1, 'intval');
 		if ($this->uniacid) {
@@ -37,7 +37,7 @@ class control extends base\controller {
 			$wechat_setting = model('wechat')->getInfoOne('weixin_wechat', array('uniacid' => $this->uniacid));
 			$this->config = array_merge($config, $wechat_setting);
 			config($this->config);
-			
+
 			$fanid = input('get.fanid', 0, 'intval') ? input('get.fanid', 0, 'intval') : input('post.fanid', 0, 'intval');
 			//lib\logging::write(var_export($fanid, true));
 			if ($fanid) {
@@ -150,7 +150,7 @@ class control extends base\controller {
 		}
 		// 最后一行在循环结束时执行
 		$result[] = $str;
-		
+
 		return $result;
 	}
 	protected function downloadImageFromWeiXin($url, $postdata, $file_path) {
@@ -202,7 +202,7 @@ class control extends base\controller {
 	public function get_rewards($where) {
 		//定制分销
 		$r = model('distribute_detail_other')->getInfo($where, 'SUM(detail_bonus) as money');
-		$rewards1 = empty($r['money']) ? 0 : $r['money'];	
+		$rewards1 = empty($r['money']) ? 0 : $r['money'];
 		//分红
 		$r = model('distribute_fenhong_record_detail')->getInfo($where, 'SUM(detail_bonus) as money');
 		$rewards2 = empty($r['money']) ? 0 : $r['money'];
@@ -213,6 +213,7 @@ class control extends base\controller {
 		$r = model('distribute_turntable_record_detail')->getInfo($where, 'SUM(detail_bonus) as money');
 		$rewards4 = empty($r['money']) ? 0 : $r['money'];
 		$rewards = $rewards1 + $rewards2 + $rewards3 + $rewards4;
+        // TODO 见单奖励
 		return array('rewards' => $rewards);
 	}
 	//获取公排收入
