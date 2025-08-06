@@ -167,6 +167,11 @@ class predeposit
                 $data_log['lg_desc'] = $data['lg_desc'];
                 $data_pd = 'available_predeposit=available_predeposit-' . $data['amount'];
 				break;
+            case 'refundjd'://退款
+                $data_log['lg_av_amount'] = -$data['amount'];
+                $data_log['lg_desc'] = $data['lg_desc'];
+                $data_pd = 'available_predeposit=available_predeposit-' . $data['amount'];
+                break;
 			case 'tixian_reject'://提现驳回
 				$data_log['lg_av_amount'] = $data['amount'];
                 $data_log['lg_desc'] = $data['lg_desc'];

@@ -23,12 +23,7 @@ class yewu
             if (!$user_info) {
                 return false;
             }
-            if ($user_info['inviter_id'] == 0) {
-                return $user_info;
-            }
-            if ($user_info['inviter_id'] == $puid) {
-                return $user_info;
-            }
+
             $puid = $user_info['inviter_id'];
         }
 
@@ -41,20 +36,21 @@ class yewu
     // 计算用户的复购见单次数
     public function get_fgjdjl_user_buy_nums($order_info)
     {
+
+        $timeStart = strtotime("2025-08-05 09:00:00");
         // 检查参数类型，如果是整数（用户ID），则直接使用
         if (is_int($order_info) || is_numeric($order_info)) {
             $uid = $order_info;
-            // 获取用户的所有订单，按支付时间排序
-            $buy_nums = model('shop_order')->where(array('uid' => $uid, 'order_state' => array(20, 30, 40, 50)))->total();
+            // 获取用户的所有订单，按支付时间排序，排除退货订单
+            $buy_nums = model('shop_order')->where(array('uid' => $uid, 'order_state' => array(20, 30, 40, 50), 'lock_state' => 0, 'tihuoquan_id' => 0, 'is_spike' => 0, 'is_del' => 0, 'payment_time >=' => $timeStart))->total();
             return $buy_nums;
         }
 
         // 如果是数组（订单信息），使用原来的逻辑
-        if (is_array($order_info) && isset($order_info['uid']) && isset($order_info['payment_time'])) {
-            $buy_nums = model('shop_order')->where(array('uid' => $order_info['uid'], 'order_state' => array(20, 30, 40, 50), 'payment_time <=' => $order_info['payment_time']))->total();
+        if (isset($order_info['uid'])) {
+            $buy_nums = model('shop_order')->where(array('uid' => $order_info['uid'], 'order_state' => array(20, 30, 40, 50), 'lock_state' => 0, 'tihuoquan_id' => 0, 'is_spike' => 0, 'is_del' => 0, 'payment_time >=' => $timeStart, 'payment_time <=' => $order_info['payment_time'] ?? time()))->total();
             return $buy_nums;
         }
-
         // 如果参数无效，返回0
         return 0;
     }
@@ -66,18 +62,20 @@ class yewu
         $file_path = BASE_PATH . '/data/fgjdjl_log.txt';
         $fgjdtj_nums = config('fgjdtj');
 
-        $file_content = date('Y-m-d H:i:s') . ' 用户ID【' . $order_info['uid'] . '】 订单号【' . $order_info['order_sn'] . '】 复购见单数【' . $fgjdtj_nums . '】-【' . $fgjdtj_user_buy_nums . '】 关键内容【' . $content . '】' . "\n";
-        file_put_contents($file_path, $file_content, FILE_APPEND);
-        return $file_content;
+        // 构建单行日志内容 - 修改为与显示页面期望的格式一致
+        $log_content = date('Y-m-d H:i:s') . ' 用户ID【' . $order_info['uid'] . '】 订单号【' . $order_info['order_sn'] . '】 复购见单数【' . $fgjdtj_nums . '】-' . $fgjdtj_user_buy_nums . '】 关键内容【' . $content . '】' . "\n";
+
+        file_put_contents($file_path, $log_content, FILE_APPEND);
+        return $log_content;
     }
 
 
     public function deal_fugou_reward($order_info)
     {
-
         $file_path = BASE_PATH . '/data/fgjdjl1_log.txt';
-        file_put_contents($file_path, "订单信息\r\n", FILE_APPEND);
-        file_put_contents($file_path, json_encode($order_info, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT ),FILE_APPEND);
+        file_put_contents($file_path, date('Y-m-d H:i:s') . "订单信息\r\n", FILE_APPEND);
+        file_put_contents($file_path, json_encode($order_info, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), FILE_APPEND);
+        file_put_contents($file_path, date('Y-m-d H:i:s') . "订单信息完毕\r\n", FILE_APPEND);
 
         $buyer_info = model('member')->where(array('uid' => $order_info['uid']))->find();
         if (!$buyer_info) {
@@ -90,46 +88,45 @@ class yewu
         //订单状态：10:待付款（默认）;20:已支付;30:已发货;40:已收货;50已完成;2已取消
         // 计算用户购买过多少单零售区商品 限制状态为已支付、已发货，已收获、已完成
         $user_buy_nums = $this->get_fgjdjl_user_buy_nums($order_info);
+        file_put_contents($file_path, date('Y-m-d H:i:s') . "用户购买单数【" . $user_buy_nums . "】\r\n", FILE_APPEND);
 
         // 检测用户是否已经发放过奖励
         $detail_info = model('distribute_fgjdjl_record_detail')->where(array('order_sn' => $order_info['order_sn']))->find();
         if ($detail_info) {
             // 记录日志
-            return $this->fgjdjl_log($order_info, $user_buy_nums, '用户已经发放过奖励，不发放奖励');
+            return $this->fgjdjl_log($order_info, $user_buy_nums, '用户已经发放过奖励，不发放奖励', $buyer_info);
         }
-
 
         if ($user_buy_nums > $fgjdtj_nums) {
             // 记录日志
-            return $this->fgjdjl_log($order_info, $user_buy_nums, '用户购买单数大于复购见单的层数，不发放奖励');
-
+            return $this->fgjdjl_log($order_info, $user_buy_nums, '用户购买单数大于复购见单的单数，不发放奖励', $buyer_info);
         }
+
         // 根据单数对应往上面找几层上级
         $parent_user_info = $this->get_fgjdjl_user_info($buyer_info['inviter_id'], $user_buy_nums);
         if (!$parent_user_info) {
             // 记录日志
-            return $this->fgjdjl_log($order_info, $user_buy_nums, '用户第' . $user_buy_nums . '层没有上级，不发放奖励');
-
+            return $this->fgjdjl_log($order_info, $user_buy_nums, '用户第' . $user_buy_nums . '单没有上级，不发放奖励', $buyer_info);
         }
 
         // 计算上级用户购买过多少单零售区的商品
         $parent_user_buy_nums = $this->get_fgjdjl_user_buy_nums($parent_user_info['uid']);
         if ($parent_user_buy_nums < $user_buy_nums) {
             // 记录日志
-            return $this->fgjdjl_log($order_info, $user_buy_nums, '上级用户【' . $parent_user_info['uid'] . '】【' . $parent_user_info['nickname'] . '】 购买单数小于用户购买单数，不发放奖励');
+            return $this->fgjdjl_log($order_info, $user_buy_nums, '上级用户购买单数小于用户购买单数，不发放奖励', $buyer_info, $parent_user_info, $parent_user_buy_nums);
         }
+
         // 获取当前用户的级别配置，获得奖励的额度
         $level_info = model('vip_level')->where(array('id' => $parent_user_info['level_id']))->find();
         if (!isset($level_info['fgjdjl']) || $level_info['fgjdjl'] <= 0) {
             // 记录日志
-            return $this->fgjdjl_log($order_info, $user_buy_nums, '上级用户级别没有配置复购见单奖励，不发放奖励');
-
+            return $this->fgjdjl_log($order_info, $user_buy_nums, '上级用户级别没有配置复购见单奖励，不发放奖励', $buyer_info, $parent_user_info, $parent_user_buy_nums);
         }
+
         // 给用户发放奖励。写入奖励明细记录，写清楚奖励的计算过程
         $fgjdjl_moeny = $level_info['fgjdjl'];
 
         // 写入奖励明细记录
-
         $desc = '用户' . $buyer_info['nickname'] . '第' . $user_buy_nums . '次购买，您获得复购见单奖励' . $fgjdjl_moeny . '元';
         $detail_data = array(
             'uniacid' => 1,
@@ -151,7 +148,6 @@ class yewu
             'update_date' => date('Y-m-d H:i:s')
         );
 
-
         // 插入奖励记录
         $detail_id = model('distribute_fgjdjl_record_detail')->add($detail_data);
         if ($detail_id) {
@@ -165,7 +161,7 @@ class yewu
             $data_pd['lg_desc'] = $desc;
             $logic_pd->changePd('commission_in', $data_pd);
             // 记录日志
-            $this->fgjdjl_log($order_info, $user_buy_nums, '成功发放复购见单奖励' . $fgjdjl_moeny . '元给用户 【' . $parent_user_info['uid'] . '】【' . $parent_user_info['nickname'] . '】');
+            $this->fgjdjl_log($order_info, $user_buy_nums, '成功发放复购见单奖励' . $fgjdjl_moeny . '元', $buyer_info, $parent_user_info, $parent_user_buy_nums);
         }
         return true;
     }
@@ -192,7 +188,7 @@ class yewu
             $data_pd['amount'] = $v['detail_bonus'];
             $data_pd['order_sn'] = $order_info['order_sn'];
             $data_pd['lg_desc'] = $desc;
-            $logic_pd->changePd('commission_out', $data_pd);
+            $logic_pd->changePd('refundjd', $data_pd);
             //更新 distribute_fgjdjl_record_detail 状态和退款时间
             model('distribute_fgjdjl_record_detail')->where(array('detail_id' => $v['detail_id']))->update(array('detail_status' => 20, 'detail_addtime' => date('Y-m-d H:i:s')));
         }

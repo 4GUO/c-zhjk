@@ -188,13 +188,13 @@
 				
 				<!-- 发放复购见单奖励 -->
 				
-				<?php if (in_array($val['order_state'], array(ORDER_STATE_PAY, ORDER_STATE_SEND, ORDER_STATE_SUCCESS))) { ?>
+				<?php if (in_array($val['order_state'], array(ORDER_STATE_PAY, ORDER_STATE_SEND, ORDER_STATE_SUCCESS)) && input('debug', '') == '1') { ?>
 				<p><a href='javascript:void(0)' class='css-btn css-btn-purple mt10' onclick="grantReward(<?php echo $val['order_id']; ?>)" id='order<?php echo $val['order_id']; ?>_action_grant_reward'><i class='icon-gift'></i>发放见单奖</a></p>
 				<?php }?>
 				
 				<!-- 收回复购见单奖励 -->
 				
-				<?php if (in_array($val['order_state'], array(ORDER_STATE_PAY, ORDER_STATE_SEND, ORDER_STATE_SUCCESS))) { ?>
+				<?php if (in_array($val['order_state'], array(ORDER_STATE_PAY, ORDER_STATE_SEND, ORDER_STATE_SUCCESS)) && input('debug', '') == '1') { ?>
 				<p><a href='javascript:void(0)' class='css-btn css-btn-purple mt10' onclick="revokeReward(<?php echo $val['order_id']; ?>)" id='order<?php echo $val['order_id']; ?>_action_revoke_reward'><i class='icon-undo'></i>收回见单奖</a></p>
 				<?php }?></td>
 			<?php } ?>

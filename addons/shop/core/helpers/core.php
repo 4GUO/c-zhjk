@@ -57,7 +57,7 @@ function input($name = '', $default = '', $filter = null, $datas = null, $safe =
                     $input = $_GET;
             }
             break;
-            
+
         case 'request':
             $input = & $_REQUEST;
             break;
@@ -90,7 +90,7 @@ function input($name = '', $default = '', $filter = null, $datas = null, $safe =
             }
             foreach ($filters as $filter) {
                 $data = array_map_recursive($filter, $data); // 参数过滤
-                
+
             }
         }
     } elseif (isset($input[$name])) { // 取值操作
@@ -115,7 +115,7 @@ function input($name = '', $default = '', $filter = null, $datas = null, $safe =
                 foreach ($filters as $filter) {
                     if (function_exists($filter)) {
                         $data = is_array($data) ? array_map_recursive($filter, $data) : $filter($data); // 参数过滤
-                        
+
                     } else {
                         $data = filter_var($data, is_int($filter) ? $filter : filter_id($filter));
                         if (false === $data) {
@@ -144,7 +144,7 @@ function input($name = '', $default = '', $filter = null, $datas = null, $safe =
                     break;
 
                 case 's': // 字符串
-                    
+
                 default:
                     $data = (string)$data;
             }
@@ -215,7 +215,7 @@ function config($name = null, $value = null, $default = null) {
         return null;
     }
     return null; // 避免非法参数
-    
+
 }
 function autoload($class) {
     if (false !== strpos($class, '\\')) {
@@ -263,7 +263,7 @@ function model($name = null, $dbconfig = array()) {
 	} else {
 	    if (is_null($name)) {
 			$db = new base\model($dbconfig);
-		} else {	
+		} else {
 			$db = new base\model($dbconfig);
 			//如果表结构不存在，则获取表结构
 			$db->setTable($name);
@@ -588,7 +588,7 @@ function decrypt($txt, $key = '', $ttl = 0) {
 	$nhnum = $nh1 + $nh2 + $nh3;
 	$mdKey = substr(md5(md5(md5($key . $ch1) . $ch2 . $ikey) . $ch3), $nhnum % 8, $knum % 8 + 16);
 	$tmp = '';
-	$j = 0; 
+	$j = 0;
 	$k = 0;
 	$tlen = strlen($txt);
 	$klen = strlen($mdKey);
@@ -600,7 +600,7 @@ function decrypt($txt, $key = '', $ttl = 0) {
 	}
 	$tmp = str_replace(array('-','_','.'), array('+','/','='), $tmp);
 	$tmp = trim(base64_decode($tmp));
-    
+
 	if (preg_match('/\d{10}_/s', substr($tmp, 0, 11))) {
 		if ($ttl > 0 && (time() - substr($tmp, 0, 11) > $ttl)) {
 			$tmp = null;
@@ -629,7 +629,7 @@ function encryptShow($str, $start, $length)
     return implode('', $array);
 }
 //根据数组中指定值排序
-function fxy_array_sort($arr, $keys, $type = 'asc') 
+function fxy_array_sort($arr, $keys, $type = 'asc')
 {
 	$keysvalue = $new_array = array();
 	foreach ($arr as $k => $v) {
@@ -687,7 +687,7 @@ function output_error($message = '', $extend_data = array())
 function web_error($message, $jumpUrl = '') {
    dispatchJump($message, $jumpUrl, $status = 0);
 }
-	
+
 function web_success($message, $jumpUrl = '') {
 	dispatchJump($message, $jumpUrl, $status = 1);
 }
@@ -791,7 +791,7 @@ function second_array_unique_bykey($arr, $key) {
 		} else {
 			$tmp_arr[$k] = $v[$key];  //将不同的值放在该数组中保存
 		}
-	}	
+	}
 	//ksort($arr); //ksort函数对数组进行排序(保留原键值key)  sort为不保留key值
 	return $arr;
 }
@@ -952,8 +952,5 @@ function asynRun($rule, $param, $debug = false, $timeout = 10) {
  * @return string
  */
 function f_hash($password) {
-    // 注释掉MD5密钥，使用简单加密
-    return md5($password);
-    
-    // return md5('@by_' . md5(md5($password) . config('md5key')));
+    return md5('@by_' . md5(md5($password) . config('md5key')));
 }

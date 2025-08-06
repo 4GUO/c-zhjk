@@ -212,7 +212,13 @@ class control extends base\controller {
 		//活动奖励
 		$r = model('distribute_turntable_record_detail')->getInfo($where, 'SUM(detail_bonus) as money');
 		$rewards4 = empty($r['money']) ? 0 : $r['money'];
-		$rewards = $rewards1 + $rewards2 + $rewards3 + $rewards4;
+        // 见单奖励
+        $whereOther = $where;
+        $whereOther['detail_status'] = 10; // 见单奖励
+        $r = model('distribute_fgjdjl_record_detail')->getInfo($whereOther, 'SUM(detail_bonus) as money');
+        $rewards5 = empty($r['money']) ? 0 : $r['money'];
+
+		$rewards = $rewards1 + $rewards2 + $rewards3 + $rewards4 + $rewards5;
         // TODO 见单奖励
 		return array('rewards' => $rewards);
 	}
