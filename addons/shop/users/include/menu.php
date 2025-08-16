@@ -543,10 +543,15 @@ $menu_list = array(
                 'act' => 'distribute_award',
                 'op' => 'jiaquan_fenhong_send'
             ) ,
-            array(
+            			array(
                 'name' => '发放零售区分红',
                 'act' => 'distribute_award',
                 'op' => 'lingshou_fenhong_send'
+            ) ,
+			array(
+                'name' => '手动发放分红券',
+                'act' => 'distribute_award',
+                'op' => 'manual_fenhongquan'
             ) ,
 			array(
                 'name' => '提现方式管理',

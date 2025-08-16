@@ -95,6 +95,12 @@ body {
 					</tfoot>
 				</table>
 				
+				<?php if (!empty($output['order_info']['extend_order_common']['order_message'])) { ?>
+				<div class='user-remark'>
+					<strong>用户备注：</strong><?php echo $output['order_info']['extend_order_common']['order_message']; ?>
+				</div>
+				<?php } ?>
+				
 				<div class='tc page'>第<?php echo $item_k;?>页/共<?php echo count($output['goods_list']);?>页</div>
 			</div>
 			<?php }?>

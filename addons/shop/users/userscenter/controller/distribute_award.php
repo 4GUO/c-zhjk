@@ -652,4 +652,283 @@ class distribute_award extends control
 
         $this->display();
     }
+
+    /**
+     * 手动发放分红券
+     * 显示待合成的分红券信息，并提供手动发放功能
+     */
+    public function manual_fenhongquanOp()
+    {
+        if (IS_API) {
+            // 获取联创级别（最高级别）
+            $lianchuang_level = model('vip_level')->field('id,level_name')->where(array('uniacid' => $this->uniacid, 'level_default' => 0))->order('level_sort DESC')->find();
+            if (!$lianchuang_level) {
+                output_error('未找到联创级别配置');
+            }
+
+            // 获取所有联创级别的用户
+            $lianchuang_users = model('distribute_account')->field('uid,can_tihuoquan_num')->where(array('uniacid' => $this->uniacid, 'level_id' => $lianchuang_level['id']))->select();
+            
+            $synthesis_list = array(); // 可合成的列表
+            $total_synthesis_count = 0; // 总可合成数量
+            
+            foreach ($lianchuang_users as $lianchuang_user) {
+                $uid = $lianchuang_user['uid'];
+                
+                // 获取该联创用户的直推用户列表 - 完全按照原有逻辑
+                $invite_list = model('distribute_account')->field('uid,can_tihuoquan_num')->where(array('inviter_id' => $uid))->select();
+                
+                // 检查是否有足够的直推用户（需要3个或以上）
+                if (count($invite_list) < 3) {
+                    continue;
+                }
+                
+                // 检查是否有足够的激活提货券进行合成 - 重新设计逻辑
+                $available_accounts = array();
+                $used_uids_in_this_synthesis = array(); // 当前合成中已使用的用户ID
+                
+                foreach ($invite_list as $invite_user) {
+                    if (count($available_accounts) >= 3) {
+                        break;
+                    }
+                    
+                    // 检查该用户是否已经在当前合成中使用过
+                    if (in_array($invite_user['uid'], $used_uids_in_this_synthesis)) {
+                        continue;
+                    }
+                    
+                    if ($invite_user['can_tihuoquan_num'] > 0) {
+                        $available_accounts[] = $invite_user;
+                        $used_uids_in_this_synthesis[] = $invite_user['uid'];
+                    } else {
+                        // 如果直推用户没有激活提货券，则在团队中寻找有激活提货券的用户
+                        $team_user = model('distribute_account')->field('uid,can_tihuoquan_num')->where(array('can_tihuoquan_num >' => 0, 'dis_path' => '%,' . $invite_user['uid'] . ',%'))->find();
+                        if ($team_user && !in_array($team_user['uid'], $used_uids_in_this_synthesis)) {
+                            $available_accounts[] = $team_user;
+                            $used_uids_in_this_synthesis[] = $team_user['uid'];
+                        }
+                    }
+                }
+                
+                // 如果找到足够的用户且有足够的激活提货券，则添加到可合成列表
+                if (count($available_accounts) >= 3) {
+                    // 获取联创用户信息
+                    $lianchuang_info = model('member')->field('uid,nickname,mobile')->where(array('uniacid' => $this->uniacid, 'uid' => $uid))->find();
+                    
+                    // 获取消耗用户信息
+                    $consumed_users_info = array();
+                    foreach ($available_accounts as $account) {
+                        $user_info = model('member')->field('uid,nickname,mobile,can_tihuoquan_num')->where(array('uniacid' => $this->uniacid, 'uid' => $account['uid']))->find();
+                        if ($user_info) {
+                            $consumed_users_info[] = $user_info;
+                        }
+                    }
+                    
+                    $synthesis_item = array(
+                        'lianchuang_uid' => $uid,
+                        'lianchuang_nickname' => $lianchuang_info['nickname'] ?: $lianchuang_info['mobile'],
+                        'lianchuang_mobile' => $lianchuang_info['mobile'],
+                        'consumed_users' => $consumed_users_info,
+                        'consumed_tihuoquan_count' => 3,
+                        'can_synthesis' => true
+                    );
+                    
+                    $synthesis_list[] = $synthesis_item;
+                    $total_synthesis_count++;
+                }
+            }
+            
+            // 添加调试信息
+            $debug_info = array();
+            $debug_info['total_lianchuang_users'] = count($lianchuang_users);
+            
+            $result = array(
+                'lianchuang_level' => $lianchuang_level['level_name'],
+                'total_synthesis_count' => $total_synthesis_count,
+                'synthesis_list' => $synthesis_list,
+                'can_synthesis' => $total_synthesis_count > 0,
+                'debug' => $debug_info
+            );
+            
+            output_data($result);
+            
+        } else {
+            $this->assign('title', '手动发放分红券');
+            $this->display();
+        }
+    }
+
+    /**
+     * 执行手动发放分红券
+     */
+    public function execute_manual_fenhongquanOp()
+    {
+        if (IS_API) {
+            // 记录开始时间
+            $start_time = time();
+            $log_data = array();
+            $log_data['start_time'] = date('Y-m-d H:i:s', $start_time);
+            
+            // 获取联创级别
+            $lianchuang_level = model('vip_level')->field('id,level_name')->where(array('uniacid' => $this->uniacid, 'level_default' => 0))->order('level_sort DESC')->find();
+            if (!$lianchuang_level) {
+                output_error('未找到联创级别配置');
+            }
+            
+            $log_data['lianchuang_level'] = $lianchuang_level['level_name'] . '(ID:' . $lianchuang_level['id'] . ')';
+            
+            // 获取所有联创级别的用户
+            $lianchuang_users = model('distribute_account')->field('uid,can_tihuoquan_num')->where(array('uniacid' => $this->uniacid, 'level_id' => $lianchuang_level['id']))->select();
+            
+            $synthesis_count = 0; // 合成次数
+            $synthesis_logs = array(); // 合成日志
+            
+            // 调试信息
+            $log_data['debug'] = array();
+            $log_data['debug']['total_lianchuang_users'] = count($lianchuang_users);
+            $log_data['debug']['lianchuang_user_ids'] = array_column($lianchuang_users, 'uid');
+            
+            foreach ($lianchuang_users as $lianchuang_user) {
+                $uid = $lianchuang_user['uid'];
+                
+                // 调试信息
+                $debug_info = array();
+                $debug_info['lianchuang_uid'] = $uid;
+                
+                // 每个联创用户独立的已消耗用户列表
+                $consumed_users_for_this_lianchuang = array();
+                
+                // 获取该联创用户的直推用户列表 - 完全按照原有逻辑
+                $invite_list = model('distribute_account')->field('uid,can_tihuoquan_num')->where(array('inviter_id' => $uid))->select();
+                
+                // 检查是否有足够的直推用户
+                if (count($invite_list) < 3) {
+                    $debug_info['skip_reason'] = '直推用户不足3个';
+                    $log_data['debug']['skipped_users'][] = $debug_info;
+                    continue;
+                }
+                
+                // 检查是否有足够的激活提货券进行合成
+                $available_accounts = array();
+                $debug_info['available_search'] = array();
+                
+                foreach ($invite_list as $invite_user) {
+                    if (count($available_accounts) >= 3) {
+                        break;
+                    }
+                    
+                    $search_info = array();
+                    $search_info['check_uid'] = $invite_user['uid'];
+                    $search_info['can_tihuoquan_num'] = $invite_user['can_tihuoquan_num'];
+                    $search_info['already_consumed'] = in_array($invite_user['uid'], $consumed_users_for_this_lianchuang);
+                    
+                    // 检查该用户是否已经被当前联创消耗过
+                    if (in_array($invite_user['uid'], $consumed_users_for_this_lianchuang)) {
+                        $search_info['result'] = '已消耗，跳过';
+                        $debug_info['available_search'][] = $search_info;
+                        continue;
+                    }
+                    
+                    if ($invite_user['can_tihuoquan_num'] > 0) {
+                        $available_accounts[] = $invite_user;
+                        $search_info['result'] = '直接可用';
+                        $debug_info['available_search'][] = $search_info;
+                    } else {
+                        // 在团队中寻找有激活提货券的用户 - 完全按照原有逻辑
+                        $team_user = model('distribute_account')->field('uid,can_tihuoquan_num')->where(array('can_tihuoquan_num >' => 0, 'dis_path' => '%,' . $invite_user['uid'] . ',%'))->find();
+                        if ($team_user && !in_array($team_user['uid'], $consumed_users_for_this_lianchuang)) {
+                            $available_accounts[] = $team_user;
+                            $search_info['result'] = '团队中找到: ' . $team_user['uid'];
+                            $debug_info['available_search'][] = $search_info;
+                        } else {
+                            $search_info['result'] = '团队中未找到可用用户';
+                            $debug_info['available_search'][] = $search_info;
+                        }
+                    }
+                }
+                
+                $debug_info['available_count'] = count($available_accounts);
+                $debug_info['available_users'] = array_column($available_accounts, 'uid');
+                
+                // 如果找到足够的用户且有足够的激活提货券，则进行合成
+                if (count($available_accounts) >= 3) {
+                    $debug_info['synthesis_result'] = '可以合成';
+                    $log_data['debug']['processed_users'][] = $debug_info;
+                    
+                    // 先标记为已被当前联创消耗（与预览方法保持一致）
+                    foreach ($available_accounts as $account) {
+                        $consumed_users_for_this_lianchuang[] = $account['uid'];
+                    }
+                    
+                    // 开始事务
+                    model()->beginTransaction();
+                    try {
+                        // 从3个用户中各扣除1个激活提货券
+                        foreach ($available_accounts as $account) {
+                            $update_result1 = model('member')->where(array('uid' => $account['uid']))->update('can_tihuoquan_num=can_tihuoquan_num-1');
+                            $update_result2 = model('distribute_account')->where(array('uid' => $account['uid']))->update('can_tihuoquan_num=can_tihuoquan_num-1');
+                            
+                            // 记录更新结果
+                            $log_data['update_results'][] = array(
+                                'uid' => $account['uid'],
+                                'member_update' => $update_result1,
+                                'distribute_update' => $update_result2
+                            );
+                        }
+                        
+                        // 给联创用户增加1张分红券
+                        model('member')->where(array('uid' => $uid))->update('fenhong_quan=fenhong_quan+1,total_fenhong_quan=total_fenhong_quan+1');
+                        
+                        // 提交事务
+                        model()->commit();
+                        
+                        $synthesis_count++;
+                        
+                        // 记录合成日志
+                        $synthesis_logs[] = array(
+                            'lianchuang_uid' => $uid,
+                            'consumed_users' => array_column($available_accounts, 'uid'),
+                            'consumed_tihuoquan_count' => 3,
+                            'synthesis_time' => date('Y-m-d H:i:s')
+                        );
+                        
+                    } catch (\Exception $e) {
+                        // 回滚事务
+                        model()->rollBack();
+                        // 如果事务失败，需要从已消耗列表中移除这些用户
+                        foreach ($available_accounts as $account) {
+                            $key = array_search($account['uid'], $consumed_users_for_this_lianchuang);
+                            if ($key !== false) {
+                                unset($consumed_users_for_this_lianchuang[$key]);
+                            }
+                        }
+                        $log_data['errors'][] = '用户ID:' . $uid . ' 合成失败: ' . $e->getMessage();
+                    }
+                } else {
+                    $debug_info['synthesis_result'] = '可用用户不足3个，无法合成';
+                    $log_data['debug']['skipped_users'][] = $debug_info;
+                }
+            }
+            
+            // 记录结束时间和统计信息
+            $end_time = time();
+            $log_data['end_time'] = date('Y-m-d H:i:s', $end_time);
+            $log_data['execution_time'] = $end_time - $start_time . '秒';
+            $log_data['synthesis_count'] = $synthesis_count;
+            $log_data['synthesis_logs'] = $synthesis_logs;
+            
+            // 输出结果
+            $result = array(
+                'msg' => '手动发放分红券任务执行完成',
+                'synthesis_count' => $synthesis_count,
+                'execution_time' => $log_data['execution_time'],
+                'log_data' => $log_data
+            );
+            
+            output_data($result);
+            
+        } else {
+            output_error('无效的请求方式');
+        }
+    }
 }
