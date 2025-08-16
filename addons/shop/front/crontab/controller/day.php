@@ -74,30 +74,30 @@ class day extends control
             'errors' => array(),
             'success_users' => array()
         );
-        
+
         // 分批处理，每批处理100个用户
         $batch_size = 100;
         $processed_count = 0;
         $success_count = 0;
         $error_count = 0;
-        
+
         // 循环处理所有符合条件的用户
         while (true) {
             // 查找所有can_tihuoquan_num > 1的用户
             $condition = array('can_tihuoquan_num >' => 1);
             $member_list = model('member')->getList($condition, 'uid,nickname,mobile,can_tihuoquan_num', 'uid ASC', $batch_size, 1);
-            
+
             if (empty($member_list['list'])) {
                 break; // 没有更多数据，退出循环
             }
-            
+
             foreach ($member_list['list'] as $member_info) {
                 $processed_count++;
-                
+
                 try {
                     // 调用提货券转分红券方法
-                    $result = logic('shop_queue')->tihuoquan_to_fenhongquan20240530(array('uid' => $member_info['uid']));
-                    
+                    $result = logic('shop_queue')->tihuoquan_to_fenhongquan(array('uid' => $member_info['uid']));
+
                     if ($result) {
                         $success_count++;
                         $log_data['success_users'][] = array(
@@ -128,13 +128,13 @@ class day extends control
                     );
                 }
             }
-            
+
             // 如果这批数据少于批次大小，说明已经处理完所有数据
             if (count($member_list['list']) < $batch_size) {
                 break;
             }
         }
-        
+
         // 记录结束时间和统计信息
         $end_time = time();
         $log_data['end_time'] = date('Y-m-d H:i:s', $end_time);
@@ -142,7 +142,7 @@ class day extends control
         $log_data['processed_count'] = $processed_count;
         $log_data['success_count'] = $success_count;
         $log_data['error_count'] = $error_count;
-        
+
         // 输出结果
         $result = array(
             'msg' => '批量提货券转分红券任务执行完成',
@@ -152,7 +152,7 @@ class day extends control
             'execution_time' => $log_data['execution_time'],
             'log_data' => $log_data
         );
-        
+
         // 如果是API请求，返回JSON格式
         if (input('is_api', 0)) {
             header('Content-Type: application/json; charset=utf-8');

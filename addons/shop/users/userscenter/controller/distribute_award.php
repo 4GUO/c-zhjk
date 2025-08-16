@@ -399,8 +399,30 @@ class distribute_award extends control
                 }
                 $this->assign('total_yeji', $total_yeji);
             }
+            
             $res = model('member')->field('SUM(fenhong_quan) as total_fenhong_quan')->where(array('level_id' => $lianchuang_level['id']))->find();
             $this->assign('total_fenhong_quan', $res['total_fenhong_quan'] ?? 0);
+            
+            // 新增：获取联创用户详细信息
+            $detailed_member_list = array();
+            $lc_members = model('member')->field('uid,nickname,mobile,fenhong_quan,total_fenhong_quan')->where(array('level_id' => $lianchuang_level['id']))->select();
+            
+            foreach ($lc_members as $member) {
+                if ($member['fenhong_quan'] > 0) {
+                    $detailed_member_list[] = array(
+                        'uid' => $member['uid'],
+                        'nickname' => !empty($member['nickname']) ? $member['nickname'] : $member['mobile'],
+                        'mobile' => $member['mobile'],
+                        'level_name' => $lianchuang_level['level_name'],
+                        'fenhong_quan' => $member['fenhong_quan'],
+                        'total_fenhong_quan' => $member['total_fenhong_quan'],
+                        'fenhong_bili' => config('yeji_fenhong_bili')
+                    );
+                }
+            }
+            
+            $this->assign('detailed_member_list', $detailed_member_list);
+            $this->assign('lianchuang_level', $lianchuang_level);
             $this->display();
         }
     }
@@ -444,15 +466,98 @@ class distribute_award extends control
                 }
                 $this->assign('total_yeji', $total_yeji);
             }
+            
             $level_list = logic('yewu')->get_level_list();
             $total_fenshu = 0;
+            $detailed_member_list = array(); // 新增：详细成员列表
+            
+            // 获取显示模式参数
+            $show_detail = input('show_detail', 0, 'intval');
+            
+            // 如果需要显示详细信息，先批量获取团队业绩和累计分红
+            $member_performance = array();
+            $member_total_bonus = array();
+            if ($show_detail) {
+                // 获取所有有绩效分红比例的级别用户
+                $all_members = array();
+                foreach ($level_list as $v) {
+                    if ($v['jiaquan_fenhong_bili'] <= 0) {
+                        continue;
+                    }
+                    $members = model('member')->field('uid')->where(array('level_id' => $v['id']))->select();
+                    foreach ($members as $member) {
+                        $all_members[] = $member['uid'];
+                    }
+                }
+                
+                // 批量查询累计分红金额
+                if (!empty($all_members)) {
+                    $bonus_data = model('distribute_fenhong_record_detail')->field('uid, SUM(detail_bonus) as total_bonus')->where(array('uid' => $all_members, 'type' => 1))->group('uid')->select();
+                    foreach ($bonus_data as $item) {
+                        $member_total_bonus[$item['uid']] = $item['total_bonus'];
+                    }
+                }
+            }
+            
             foreach ($level_list as $v) {
                 if ($v['jiaquan_fenhong_bili'] <= 0) {
                     continue;
                 }
-                $total_fenshu += model('member')->where(array('level_id' => $v['id']))->total();
+                $member_list = model('member')->field('uid,nickname,mobile')->where(array('level_id' => $v['id']))->select();
+                $level_total_fenshu = 0;
+                $level_member_list = array();
+                
+                foreach ($member_list as $kk => $vv) {
+                    // 根据显示模式决定是否查询详细信息
+                    if ($show_detail) {
+                        // 详细模式：查询团队业绩和累计分红
+                        $yue_yeji = logic('yewu')->get_team_yeji_by_month2($vv['uid'], $start_unixtime, $end_unixtime);
+                        $total_bonus = isset($member_total_bonus[$vv['uid']]) ? $member_total_bonus[$vv['uid']] : 0;
+                        
+                        if (($yue_yeji >= $v['jiaquan_fenhong_yue_yeji']) && ($total_bonus < $v['jiaquan_fenhong_total'])) {
+                            $level_total_fenshu++;
+                            $level_member_list[] = $vv;
+                            
+                            // 构建详细成员信息
+                            $detailed_member_list[] = array(
+                                'uid' => $vv['uid'],
+                                'nickname' => !empty($vv['nickname']) ? $vv['nickname'] : $vv['mobile'],
+                                'mobile' => $vv['mobile'],
+                                'level_name' => $v['level_name'],
+                                'level_id' => $v['id'],
+                                'yue_yeji' => $yue_yeji,
+                                'required_yue_yeji' => $v['jiaquan_fenhong_yue_yeji'],
+                                'total_bonus' => $total_bonus,
+                                'required_total_bonus' => $v['jiaquan_fenhong_total'],
+                                'fenhong_bili' => $v['jiaquan_fenhong_bili']
+                            );
+                        }
+                    } else {
+                        // 快速模式：简单统计该级别的所有用户数量，并显示基本信息
+                        $level_total_fenshu++;
+                        $level_member_list[] = $vv;
+                        
+                        // 构建基本成员信息（不包含详细的业绩和分红数据）
+                        $detailed_member_list[] = array(
+                            'uid' => $vv['uid'],
+                            'nickname' => !empty($vv['nickname']) ? $vv['nickname'] : $vv['mobile'],
+                            'mobile' => $vv['mobile'],
+                            'level_name' => $v['level_name'],
+                            'level_id' => $v['id'],
+                            'yue_yeji' => 0, // 快速模式不显示具体数值
+                            'required_yue_yeji' => $v['jiaquan_fenhong_yue_yeji'],
+                            'total_bonus' => 0, // 快速模式不显示具体数值
+                            'required_total_bonus' => $v['jiaquan_fenhong_total'],
+                            'fenhong_bili' => $v['jiaquan_fenhong_bili']
+                        );
+                    }
+                }
+                $total_fenshu += $level_total_fenshu;
             }
+            
             $this->assign('total_fenshu', $total_fenshu);
+            $this->assign('detailed_member_list', $detailed_member_list); // 新增：传递详细列表到视图
+            $this->assign('show_detail', $show_detail); // 新增：传递显示模式
             $this->display();
         }
     }
@@ -489,34 +594,75 @@ class distribute_award extends control
             }
             unset($order_list);
             $this->assign('total_yeji', $total_yeji);
+            
             //推荐config('linshou_fenhong_inviter_num')个体验馆，并且自身级别大于config('linshou_fenhong_level_id')的才能分红
             $tiyanguan_level = model('vip_level')->where(array('need_buy_experience_goods' => 1))->order('level_sort ASC')->find();
             $fenhong_level = model('vip_level')->where(array('id' => config('linshou_fenhong_level_id')))->order('level_sort ASC')->find();
             $gudong_list = array();
-            $result = model('member')->getList(array(), 'uid,level_id,inviter_id');
+            $detailed_gudong_list = array(); // 新增：详细股东列表
+            
+            // 获取显示模式参数
+            $show_detail = input('show_detail', 0, 'intval');
+            
+            $result = model('member')->getList(array(), 'uid,level_id,inviter_id,nickname,mobile');
+            
+            // 如果需要显示详细信息，先批量获取邀请人数
+            $inviter_counts = array();
+            if ($show_detail) {
+                // 获取所有符合条件的用户ID
+                $potential_users = array();
+                foreach ($result['list'] as $rr) {
+                    $member_level = model('vip_level')->field('level_sort')->where(array('id' => $rr['level_id']))->find();
+                    if ($member_level['level_sort'] >= $fenhong_level['level_sort']) {
+                        $potential_users[] = $rr['uid'];
+                    }
+                }
+                
+                // 批量查询邀请人数
+                if (!empty($potential_users)) {
+                    $inviter_data = model('member')->field('inviter_id, COUNT(*) as count')->where(array('inviter_id' => $potential_users, 'has_buy_tygoods' => 1))->group('inviter_id')->select();
+                    foreach ($inviter_data as $item) {
+                        $inviter_counts[$item['inviter_id']] = $item['count'];
+                    }
+                }
+            }
+            
             foreach ($result['list'] as $rr) {
-                $member_level = model('vip_level')->field('level_sort')->where(array('id' => $rr['level_id']))->find();
+                $member_level = model('vip_level')->field('level_sort,level_name')->where(array('id' => $rr['level_id']))->find();
                 if ($member_level['level_sort'] < $fenhong_level['level_sort']) {//排除自身级别没有分红资格的
                     continue;
                 }
-                //统计邀请体验馆的人数
-                $inviter_num = 0;
-                /*foreach ($result['list'] as $vv) {
-                    if ($vv['inviter_id'] == $rr['uid'] && $vv['level_id'] >= $tiyanguan_level['id']) {
-                        $inviter_num = $inviter_num + 1;
-                    }
-                }*/
-                //统计购买过体验套餐的人
-                $inviter_num = model('member')->where(array('inviter_id' => $rr['uid'], 'has_buy_tygoods' => 1))->total();
-                if ($inviter_num >= config('linshou_fenhong_inviter_num')) {
-                    $gudong_list[$rr['uid']] = $rr;
+                
+                // 根据显示模式决定是否查询邀请人数
+                if ($show_detail) {
+                    // 详细模式：使用预查询的数据
+                    $inviter_num = isset($inviter_counts[$rr['uid']]) ? $inviter_counts[$rr['uid']] : 0;
+                } else {
+                    // 快速模式：不查询邀请人数，只检查是否符合条件
+                    $inviter_num = model('member')->where(array('inviter_id' => $rr['uid'], 'has_buy_tygoods' => 1))->total();
                 }
+                
                 if ($inviter_num >= config('linshou_fenhong_inviter_num')) {
                     $gudong_list[$rr['uid']] = $rr;
+                    
+                    // 新增：构建详细股东信息
+                    $detailed_gudong_list[] = array(
+                        'uid' => $rr['uid'],
+                        'nickname' => !empty($rr['nickname']) ? $rr['nickname'] : $rr['mobile'],
+                        'mobile' => $rr['mobile'],
+                        'level_name' => $member_level['level_name'],
+                        'inviter_num' => $inviter_num,
+                        'required_num' => config('linshou_fenhong_inviter_num')
+                    );
                 }
             }
             unset($result);
+            
             $this->assign('total_fenshu', count($gudong_list));
+            $this->assign('detailed_gudong_list', $detailed_gudong_list); // 新增：传递详细列表到视图
+            $this->assign('fenhong_level', $fenhong_level); // 新增：传递分红级别信息
+            $this->assign('required_inviter_num', config('linshou_fenhong_inviter_num')); // 新增：传递要求的邀请人数
+            $this->assign('show_detail', $show_detail); // 新增：传递显示模式
             $this->display();
         }
     }

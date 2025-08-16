@@ -5,7 +5,7 @@
 			<tr>
 				<td>&nbsp;</td>
 				<th>时间</th>
-				<td class='w240'>
+				<td class='w300'>
 					<input class='text w70' name='query_start_date' id='query_start_date' value='<?=input('query_start_date', '')?>' readonly='readonly' type='text' />
 					<label class='add-on'><i class='icon-calendar'></i></label>
 					&nbsp;–&nbsp;
@@ -21,6 +21,7 @@
 		</tbody>
 	</table>
 </form>
+
 <div class='css-form-default'>
 	<form id='form' method='post' target='_parent' action='<?=_url('distribute_award/yeji_fenhong_send')?>'>
 		<input type='hidden' id='form_submit' name='form_submit' value='ok'/>
@@ -35,13 +36,19 @@
 		<dl>
 			<dt>分红券总量：</dt>
 			<dd>
-				<?=$output['total_fenhong_quan']?>&nbsp;
+				<span class='highlight'><?=$output['total_fenhong_quan']?></span>&nbsp;张
 			</dd>
 		</dl>
 		<dl>
 			<dt>分红比例：</dt>
 			<dd>
-				<?=$output['setting']['yeji_fenhong_bili']?>&nbsp;%
+				<span class='highlight'><?=$output['setting']['yeji_fenhong_bili']?></span>&nbsp;%
+			</dd>
+		</dl>
+		<dl>
+			<dt>分红条件：</dt>
+			<dd>
+				联创级别（<span class='highlight'><?=$output['lianchuang_level']['level_name']?></span>）且持有分红券
 			</dd>
 		</dl>
 		<div class='bottom'>
@@ -49,6 +56,93 @@
 		</div>
 	</form>
 </div>
+
+<!-- 新增：详细人员列表 -->
+<div class='css-form-default' style='margin-top: 20px;'>
+	<h3 style='margin-bottom: 15px; color: #333; border-bottom: 2px solid #007cba; padding-bottom: 8px;'>
+		<i class='icon-users'></i> 符合分红条件的联创人员列表
+	</h3>
+	
+	<?php if (!empty($output['detailed_member_list'])): ?>
+		<table class='css-default-table' id='my_agent'>
+			<thead>
+				<tr>
+					<th class='w60'>序号</th>
+					<th class='w100'>用户ID</th>
+					<th class='w150'>昵称</th>
+					<th class='w120'>手机号</th>
+					<th class='w100'>级别</th>
+					<th class='w120'>可用分红券</th>
+					<th class='w120'>累计分红券</th>
+					<th class='w100'>分红比例</th>
+					<th class='w100'>状态</th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php foreach ($output['detailed_member_list'] as $index => $member): ?>
+				<tr>
+					<td class='tc'><?=$index + 1?></td>
+					<td class='tc'><?=$member['uid']?></td>
+					<td><?=htmlspecialchars($member['nickname'])?></td>
+					<td><?=htmlspecialchars($member['mobile'])?></td>
+					<td class='tc'><span class='label label-success'><?=htmlspecialchars($member['level_name'])?></span></td>
+					<td class='tc'>
+						<span class='highlight'><?=$member['fenhong_quan']?></span> 张
+					</td>
+					<td class='tc'>
+						<?=$member['total_fenhong_quan']?> 张
+					</td>
+					<td class='tc'>
+						<span class='label label-info'><?=$member['fenhong_bili']?>%</span>
+					</td>
+					<td class='tc'>
+						<span class='label label-success'>符合条件</span>
+					</td>
+				</tr>
+				<?php endforeach; ?>
+			</tbody>
+		</table>
+	
+	<?php else: ?>
+		<div class='alert alert-info' style='margin-top: 15px;'>
+			<i class='icon-info-sign'></i> 当前没有持有分红券的联创用户
+		</div>
+	<?php endif; ?>
+</div>
+
+<style>
+.highlight {
+	color: #007cba;
+	font-weight: bold;
+}
+.label {
+	padding: 3px 8px;
+	border-radius: 3px;
+	font-size: 12px;
+}
+.label-success {
+	background-color: #5cb85c;
+	color: white;
+}
+.label-info {
+	background-color: #5bc0de;
+	color: white;
+}
+.alert {
+	padding: 15px;
+	border: 1px solid transparent;
+	border-radius: 4px;
+}
+.alert-info {
+	color: #31708f;
+	background-color: #d9edf7;
+	border-color: #bce8f1;
+}
+.summary-info {
+	border-left: 4px solid #007cba;
+}
+</style>
+
 <link rel='stylesheet' type='text/css' href='<?=STATIC_URL?>/js/datetimepicker/jquery.datetimepicker.css'/>
 <script type='text/javascript' src='<?=STATIC_URL?>/js/datetimepicker/jquery.datetimepicker.js'></script>
 <script>

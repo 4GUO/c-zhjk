@@ -131,7 +131,7 @@ class shop_queue
 		$model_voucher = model('voucher');
 		$voucher_ids = array_values($voucher_arr);
 		if (empty($voucher_ids)) {
-			return callback(true); 
+			return callback(true);
 		}
 		$voucher_list = $model_voucher->where(array('voucher_id' => $voucher_ids, 'voucher_owner_id' => $uid))->select();
 		foreach ($voucher_list as $voucher_info) {
@@ -205,7 +205,7 @@ class shop_queue
 			}
 			//lib\logging::write(var_export($lc_uid, true));
 			model('member')->where(array('uid' => $lc_uid))->update('fenhong_quan=fenhong_quan+1,total_fenhong_quan=total_fenhong_quan+1');
-			
+
 		}
 		return true;
 	}
@@ -243,7 +243,7 @@ class shop_queue
 					} else {
 						//否则就是在团队里面找
                         $res = model('distribute_account')->field('uid')->where(array('can_tihuoquan_num >' => 0, 'dis_path' =>  '%,' . $v['uid'] . ',%'))->find();
-                        
+
                         if ($res) {
                             $up_accounts[] = $res;
                         }
@@ -335,7 +335,7 @@ class shop_queue
 					} else {
 						//否则就是在团队里面找
                         $res = model('distribute_account')->field('uid')->where(array('can_tihuoquan_num >' => 0, 'dis_path' =>  '%,' . $v['uid'] . ',%'))->find();
-                        
+
                         if ($res) {
                             $up_accounts[] = $res;
                         }

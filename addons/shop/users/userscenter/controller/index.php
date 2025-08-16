@@ -408,4 +408,80 @@ class index extends control {
 		}
 		$this->display();
 	}
+	
+	public function untihuoquan_listOp() {
+		$model = model('shop_goods_tihuoquan');
+		$where = array();
+		$where['state'] = 0; // 未提货状态
+		
+		// 搜索条件
+		$keyword = input('get.keyword', '');
+		if ($keyword) {
+			$search_type = input('get.search_type', 'nickname');
+			if ($search_type == 'nickname') {
+				$member_uids = model('member')->where(array('uniacid' => $this->uniacid, 'nickname' => '%' . trim($keyword) . '%'))->field('uid')->select();
+			} elseif ($search_type == 'mobile') {
+				$member_uids = model('member')->where(array('uniacid' => $this->uniacid, 'mobile' => '%' . trim($keyword) . '%'))->field('uid')->select();
+			} elseif ($search_type == 'truename') {
+				$member_uids = model('member')->where(array('uniacid' => $this->uniacid, 'truename' => '%' . trim($keyword) . '%'))->field('uid')->select();
+			}
+			
+			if (!empty($member_uids)) {
+				$uids = array_column($member_uids, 'uid');
+				$where['uid'] = $uids;
+			} else {
+				$where['uid'] = 0; // 没有匹配的用户
+			}
+		}
+		
+		// 时间范围搜索
+		$query_start_date = input('get.query_start_date', '');
+		$query_end_date = input('get.query_end_date', '');
+		$if_start_date = preg_match('/^20\d{2}-\d{2}-\d{2}$/', $query_start_date);
+		$if_end_date = preg_match('/^20\d{2}-\d{2}-\d{2}$/', $query_end_date);
+		$start_unixtime = $if_start_date ? strtotime($query_start_date . ' 00:00:00') : 0;
+		$end_unixtime = $if_end_date ? strtotime($query_end_date . ' 23:59:59') : 0;
+		
+		if ($start_unixtime > 0) {
+			$where['add_time >='] = $start_unixtime;
+		}
+		if ($end_unixtime > 0) {
+			$where['add_time <='] = $end_unixtime;
+		}
+		
+		$list = $model->getList($where, '*', 'id DESC', 20, input('get.page', 1, 'intval'));
+		$this->assign('page', page($list['totalpage'], array('page' => input('get.page', 1, 'intval'), 'keyword' => $keyword, 'search_type' => input('get.search_type', 'nickname'), 'query_start_date' => $query_start_date, 'query_end_date' => $query_end_date), users_url('index/untihuoquan_list')));
+		$this->assign('list', $list['list']);
+		
+		// 获取会员信息
+		$member_list = array();
+		$uids = array();
+		if (!empty($list['list'])) {
+			foreach ($list['list'] as $r) {
+				if (!in_array($r['uid'], $uids)) {
+					$uids[] = $r['uid'];
+				}
+			}
+			$result = model('member')->getList(array('uid' => $uids), 'uid,nickname,headimg,mobile,truename,level_id');
+			if (!empty($result['list']) && is_array($result['list'])) {
+				foreach ($result['list'] as $rr) {
+					$member_list[$rr['uid']] = array(
+						'nickname' => !empty($rr['nickname']) ? $rr['nickname'] : $rr['mobile'],
+						'headimg' => !empty($rr['headimg']) ? $rr['headimg'] : STATIC_URL . '/shop/img/default_user.png',
+						'mobile' => $rr['mobile'],
+						'truename' => $rr['truename'],
+						'level_id' => $rr['level_id']
+					);
+				}
+			}
+			unset($result);
+		}
+		$this->assign('member_list', $member_list);
+		
+		// 获取级别信息
+		$level_list = logic('yewu')->get_level_list('*', 'level_sort DESC');
+		$this->assign('level_list', $level_list);
+		
+		$this->display();
+	}
 }

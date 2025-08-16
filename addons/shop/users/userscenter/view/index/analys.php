@@ -231,7 +231,7 @@
 					<div class='title'>已提货提货券数量</div>
 				</div>
 			</a>
-			<a class='flex-item' href='javascript:;'>
+			<a class='flex-item' href='<?=users_url('index/untihuoquan_list')?>'>
 				<img class='icon' src='<?=STATIC_URL?>/admin/images/Block-3.png'>
 				<div class='text'>
 					<div class='num'><?=$output['tihuoquan_num']?></div>
