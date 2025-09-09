@@ -548,11 +548,11 @@ $menu_list = array(
                 'act' => 'distribute_award',
                 'op' => 'lingshou_fenhong_send'
             ) ,
-			array(
-                'name' => '手动发放分红券',
-                'act' => 'distribute_award',
-                'op' => 'manual_fenhongquan'
-            ) ,
+			// array(
+            //     'name' => '手动发放分红券',
+            //     'act' => 'distribute_award',
+            //     'op' => 'manual_fenhongquan'
+            // ) ,
 			array(
                 'name' => '提现方式管理',
                 'act' => 'withdraw_method',

@@ -63,7 +63,7 @@ class day extends control
         if ($pass != md5('123987')) {
             return;
         }
-        
+
         // 记录开始时间
         $start_time = time();
         $log_data = array(
