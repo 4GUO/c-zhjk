@@ -567,10 +567,12 @@ class distribute_award extends control
     {
         if (chksubmit()) {
             $yeji = input('yeji', 0, 'floatval');
+            $range = input('range', 0, 'intval'); // 获取发放范围参数
             if ($yeji <= 0) {
                 output_error('业绩不能空');
             }
-            logic('yewu')->yue_deal_fenhong($yeji);
+            // 传递range参数到业务逻辑
+            logic('yewu')->yue_deal_fenhong($yeji, $range);
             output_data(array('msg' => '分红成功', 'url' => _url('distribute_award/lingshou_fenhong_send')));
         } else {
             $where = array();
@@ -1077,4 +1079,361 @@ class distribute_award extends control
             output_error('无效的请求方式');
         }
     }
+
+    /**
+     * 保存零售分红名单
+     */
+    public function save_lingshou_fenhong_listOp()
+    {
+        if (!chksubmit()) {
+            $this->display();
+            return;
+        }
+
+        // 获取配置参数
+        $level_id = config('linshou_fenhong_level_id');
+        $required_inviter_num = config('linshou_fenhong_inviter_num');
+        
+        // 验证分红级别配置
+        $fenhong_level = model('vip_level')->where(array('id' => $level_id))->find();
+        if (!$fenhong_level) {
+            output_error('分红级别配置错误');
+        }
+        
+        // 检查是否已经存在相同的分红级别和推荐人数的记录
+        $existing_record = model('ls_his')->getInfo(array(
+            'level' => $level_id,
+            'yqgmtytcrs' => $required_inviter_num
+        ));
+        
+        if ($existing_record) {
+            output_error('当前分红级别和推荐人数已经保存过，不能重复添加');
+        }
+        
+        // 获取符合条件的用户列表
+        $gudong_list = $this->getFenhongMemberList($fenhong_level, $required_inviter_num);
+        if (empty($gudong_list)) {
+            output_error('没有符合条件的用户');
+        }
+        
+        // 开始事务处理
+        $model = model();
+        $model->beginTransaction();
+        
+        try {
+            // 保存分红设置
+            $current_time = time();
+            $ls_his_data = array(
+                'date' => date('Ym'),
+                'level' => $level_id,
+                'level_name' => $fenhong_level['level_name'],
+                'yqgmtytcrs' => $required_inviter_num,
+                'tjrs' => count($gudong_list),
+                'stat' => 1,
+                'create_time' => $current_time,
+                'update_time' => $current_time
+            );
+            
+            $ls_his_id = model('ls_his')->add($ls_his_data);
+            if (!$ls_his_id) {
+                throw new \Exception('保存分红配置失败');
+            }
+            
+            // 批量保存分红名单详情
+            $detail_data = array();
+            foreach ($gudong_list as $member) {
+                $detail_data[] = array(
+                    'his_id' => $ls_his_id,
+                    'uid' => $member['uid'],
+                    'tjrs' => $member['inviter_count'],
+                    'stat' => 1,
+                    'create_time' => $current_time,
+                    'update_time' => $current_time
+                );
+            }
+            
+            if (!empty($detail_data)) {
+                $result = model('ls_his_dtl')->insertAll($detail_data);
+                if (!$result) {
+                    throw new \Exception('保存分红名单失败');
+                }
+            }
+            
+            $model->commit();
+            
+            output_data(array(
+                'msg' => '保存成功',
+                'ls_his_id' => $ls_his_id,
+                'total_members' => count($gudong_list),
+                'url' => _url('distribute_award/lingshou_fenhong_send')
+            ));
+            
+        } catch (\Exception $e) {
+            $model->rollBack();
+            output_error('保存失败：' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 获取符合条件的分红用户列表（复用现有逻辑）
+     */
+    private function getFenhongMemberList($fenhong_level, $required_inviter_num)
+    {
+        $gudong_list = array();
+        $result = model('member')->getList(array(), 'uid,level_id,inviter_id,nickname,mobile');
+        
+        foreach ($result['list'] as $member) {
+            $member_level = model('vip_level')->field('level_sort,level_name')->where(array('id' => $member['level_id']))->find();
+            
+            // 检查级别条件（和现有逻辑一致）
+            if ($member_level['level_sort'] < $fenhong_level['level_sort']) {
+                continue;
+            }
+            
+            // 统计邀请人数（和现有逻辑一致）
+            $inviter_count = model('member')->where(array('inviter_id' => $member['uid'], 'has_buy_tygoods' => 1))->total();
+            
+            if ($inviter_count >= $required_inviter_num) {
+                $gudong_list[] = array(
+                    'uid' => $member['uid'],
+                    'nickname' => !empty($member['nickname']) ? $member['nickname'] : $member['mobile'],
+                    'mobile' => $member['mobile'],
+                    'level_id' => $member['level_id'],
+                    'level_name' => $member_level['level_name'],
+                    'inviter_count' => $inviter_count
+                );
+            }
+        }
+        
+        return $gudong_list;
+    }
+
+    /**
+     * 分红名单列表（主数据+从数据合并显示）
+     */
+    public function lingshou_fenhong_listOp()
+    {
+        $where = array();
+        
+        // 状态筛选
+        $stat = input('stat', -1, 'intval');
+        if ($stat > -1) {
+            $where['stat'] = $stat;
+        }
+        
+        // 日期筛选
+        $date = input('date', '', 'trim');
+        if ($date) {
+            $where['date'] = $date;
+        }
+        
+        $list = model('ls_his')->getList($where, '*', 'id DESC', 20, input('get.page', 1, 'intval'));
+        
+        // 处理列表数据，同时获取每个配置对应的用户名单
+        foreach ($list['list'] as &$item) {
+            $item['create_time_text'] = date('Y-m-d H:i:s', $item['create_time']);
+            $item['update_time_text'] = date('Y-m-d H:i:s', $item['update_time']);
+            $item['stat_text'] = $item['stat'] == 1 ? '生效' : '不生效';
+            $item['date_text'] = $item['date'] ? substr($item['date'], 0, 4) . '-' . substr($item['date'], 4, 2) : '';
+            
+            // 获取该配置下的用户名单详情
+            $detail_list = model('ls_his_dtl')->getList(array('his_id' => $item['id']), '*', 'id ASC', 100);
+            
+            // 处理用户详情数据
+            foreach ($detail_list['list'] as &$detail) {
+                $member = model('member')->getInfo(array('uid' => $detail['uid']), 'nickname,mobile,level_id');
+                $detail['nickname'] = !empty($member['nickname']) ? $member['nickname'] : $member['mobile'];
+                $detail['mobile'] = $member['mobile'];
+                
+                $level = model('vip_level')->getInfo(array('id' => $member['level_id']), 'level_name');
+                $detail['level_name'] = $level['level_name'];
+                
+                $detail['stat_text'] = $detail['stat'] == 1 ? '启用' : '不启用';
+            }
+            
+            $item['member_list'] = $detail_list['list'];
+        }
+        
+        $this->assign('page', page($list['totalpage'], array(
+            'page' => input('get.page', 1, 'intval'),
+            'stat' => $stat,
+            'date' => $date
+        ), users_url('distribute_award/lingshou_fenhong_list')));
+        
+        $this->assign('list', $list['list']);
+        $this->assign('stat', $stat);
+        $this->assign('date', $date);
+        $this->display();
+    }
+
+    /**
+     * 启用/禁用分红配置
+     */
+    public function toggle_fenhong_statusOp()
+    {
+        $id = input('id', 0, 'intval');
+        $stat = input('stat', 0, 'intval');
+        
+        if ($id <= 0) {
+            output_error('参数错误');
+        }
+        
+        $stat = $stat == 1 ? 1 : 0;
+        
+        $result = model('ls_his')->edit(array('id' => $id), array(
+            'stat' => $stat,
+            'update_time' => time()
+        ));
+        
+        if ($result) {
+            output_data(array('msg' => $stat == 1 ? '启用成功' : '禁用成功'));
+        } else {
+            output_error('操作失败');
+        }
+    }
+
+    /**
+     * 启用/禁用分红名单中的用户
+     */
+    public function toggle_user_statusOp()
+    {
+        $id = input('id', 0, 'intval');
+        $stat = input('stat', 0, 'intval');
+        
+        if ($id <= 0) {
+            output_error('参数错误');
+        }
+        
+        $stat = $stat == 1 ? 1 : 0;
+        
+        $result = model('ls_his_dtl')->edit(array('id' => $id), array(
+            'stat' => $stat,
+            'update_time' => time()
+        ));
+        
+        if ($result) {
+            output_data(array('msg' => $stat == 1 ? '启用成功' : '禁用成功'));
+        } else {
+            output_error('操作失败');
+        }
+    }
+
+    /**
+     * 获取分红名单详情
+     */
+    public function get_member_listOp()
+    {
+        if (IS_API) {
+            $his_id = input('his_id', 0, 'intval');
+            
+            if ($his_id <= 0) {
+                output_error('参数错误');
+            }
+            
+            // 获取名单详情
+            $detail_list = model('ls_his_dtl')->getList(array('his_id' => $his_id), '*', 'id ASC', 100);
+            
+            // 处理用户详情数据
+            foreach ($detail_list['list'] as &$detail) {
+                $member = model('member')->getInfo(array('uid' => $detail['uid']), 'nickname,mobile,level_id');
+                $detail['nickname'] = !empty($member['nickname']) ? $member['nickname'] : $member['mobile'];
+                $detail['mobile'] = $member['mobile'];
+                
+                $level = model('vip_level')->getInfo(array('id' => $member['level_id']), 'level_name');
+                $detail['level_name'] = $level['level_name'];
+                
+                $detail['stat_text'] = $detail['stat'] == 1 ? '启用' : '不启用';
+            }
+            
+            output_data(array(
+                'member_list' => $detail_list['list'],
+                'total_count' => count($detail_list['list'])
+            ));
+            
+        } else {
+            output_error('无效的请求方式');
+        }
+    }
+
+    /**
+     * 获取历史名单选项卡数据（按日期分组）
+     */
+    public function get_history_tabsOp()
+    {
+        if (IS_API) {
+            // 获取所有历史记录，按日期分组
+            $list = model('ls_his')->getList(array(), '*', 'date DESC, id DESC', 100);
+            
+            $tabs = array();
+            $tab_data = array();
+            
+            if (!empty($list['list'])) {
+                // 按日期分组，显示所有配置（包括禁用的）
+                $grouped_by_date = array();
+                foreach ($list['list'] as $item) {
+                    $date_text = "(" . $item['id'] . ") ";
+                    $date_text .= $item['date'] ? $item['date'] : '未知日期';
+                
+                    $grouped_by_date[$date_text][] = $item;
+                }
+                
+                // 生成选项卡和数据
+                foreach ($grouped_by_date as $date_text => $items) {
+                    // 生成安全的选项卡ID，只保留字母数字和下划线
+                    $tab_id = 'history_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $date_text);
+                    
+                    // 计算所有用户总数（包括禁用状态的用户）
+                    $total_user_count = 0;
+                    $all_members = array();
+                    
+                    $processed_configs = array();
+                    foreach ($items as $item) {
+                        // 处理配置信息
+                        $item['create_time_text'] = date('Y-m-d H:i:s', $item['create_time']);
+                        $item['stat_text'] = $item['stat'] == 1 ? '生效' : '不生效';
+                        $processed_configs[] = $item;
+                        
+                        // 获取该配置下的所有用户详情（包括禁用状态的用户）
+                        $detail_list = model('ls_his_dtl')->getList(array('his_id' => $item['id']), '*', 'id ASC', 100);
+                        foreach ($detail_list['list'] as $detail) {
+                            $total_user_count++;
+                            $member = model('member')->getInfo(array('uid' => $detail['uid']), 'nickname,mobile,level_id');
+                            $level = model('vip_level')->getInfo(array('id' => $member['level_id']), 'level_name');
+                            
+                            $all_members[] = array(
+                                'uid' => $detail['uid'],
+                                'nickname' => !empty($member['nickname']) ? $member['nickname'] : $member['mobile'],
+                                'mobile' => $member['mobile'],
+                                'level_name' => $level['level_name'],
+                                'tjrs' => $detail['tjrs'],
+                                'stat' => $detail['stat'],
+                                'stat_text' => $detail['stat'] == 1 ? '启用' : '不启用',
+                                'detail_id' => $detail['id']
+                            );
+                        }
+                    }
+                    
+                    $tabs[] = array(
+                        'id' => $tab_id,
+                        'name' => $date_text,
+                        'count' => $total_user_count
+                    );
+                    
+                    $tab_data[$tab_id] = array(
+                        'configs' => $processed_configs,
+                        'members' => $all_members
+                    );
+                }
+            }
+            
+            output_data(array(
+                'tabs' => $tabs,
+                'data' => $tab_data
+            ));
+            
+        } else {
+            output_error('无效的请求方式');
+        }
+    }
+    
 }

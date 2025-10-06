@@ -311,13 +311,13 @@ class yewu
     }
 
     //零售月分红 每月一号凌晨1分执行
-    public function yue_deal_fenhong($total_yeji)
+    public function yue_deal_fenhong($total_yeji, $range = 0)
     {
         //fenhong_reward_bili
         $this_month = lib\timer::month();
         $lock_submit = model('distribute_fenhong_record_detail')->where(array('detail_addtime >=' => $this_month[0], 'type' => 3))->total();
         if ($lock_submit) {
-            return true;
+            //return true;
         }
         //推荐config('linshou_fenhong_inviter_num')个体验馆，并且自身级别大于config('linshou_fenhong_level_id')的才能分红
         $tiyanguan_level = model('vip_level')->where(array('need_buy_experience_goods' => 1))->order('level_sort ASC')->find();
@@ -343,6 +343,30 @@ class yewu
             }
         }
         unset($result);
+        
+        // 如果range=1，需要包含历史保存名单（简化逻辑，只判断状态）
+        if ($range == 1) {
+            // 获取历史保存的名单（只获取状态为1的）
+            $history_list = model('ls_his')->getList(array('stat' => 1), 'id');
+            foreach ($history_list['list'] as $history_item) {
+                // 获取该历史配置的详细名单（只获取状态为1的）
+                $history_details = model('ls_his_dtl')->getList(array('his_id' => $history_item['id'], 'stat' => 1), 'uid');
+                foreach ($history_details['list'] as $detail) {
+                    // 去重检查：如果用户已经在gudong_list中，跳过
+                    if (isset($gudong_list[$detail['uid']])) {
+                        continue;
+                    }
+                    
+                    // 检查用户是否仍然存在（只需要检查用户是否存在，不需要检查级别和推荐人数）
+                    $member_info = model('member')->getInfo(array('uid' => $detail['uid']), 'uid,level_id,inviter_id');
+                    if ($member_info) {
+                        // 直接添加到分红列表（历史名单不需要重新判断条件）
+                        $gudong_list[$detail['uid']] = $member_info;
+                    }
+                }
+            }
+        }
+        
         if (count($gudong_list) <= 0) {
             return true;
         }
