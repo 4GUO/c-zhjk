@@ -1361,6 +1361,9 @@ class distribute_award extends control
     public function get_history_tabsOp()
     {
         if (IS_API) {
+            // 1. 首先获取当前符合分红条件的人员UID列表（用于过滤）
+            $current_fenhong_uids = $this->getCurrentFenhongUids();
+            
             // 获取所有历史记录，按日期分组
             $list = model('ls_his')->getList(array(), '*', 'date DESC, id DESC', 100);
             
@@ -1382,7 +1385,7 @@ class distribute_award extends control
                     // 生成安全的选项卡ID，只保留字母数字和下划线
                     $tab_id = 'history_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $date_text);
                     
-                    // 计算所有用户总数（包括禁用状态的用户）
+                    // 计算所有用户总数（包括禁用状态的用户，但排除当前分红人员）
                     $total_user_count = 0;
                     $all_members = array();
                     
@@ -1391,12 +1394,21 @@ class distribute_award extends control
                         // 处理配置信息
                         $item['create_time_text'] = date('Y-m-d H:i:s', $item['create_time']);
                         $item['stat_text'] = $item['stat'] == 1 ? '生效' : '不生效';
-                        $processed_configs[] = $item;
                         
                         // 获取该配置下的所有用户详情（包括禁用状态的用户）
                         $detail_list = model('ls_his_dtl')->getList(array('his_id' => $item['id']), '*', 'id ASC', 100);
+                        
+                        // 2. 计算过滤后的人数
+                        $config_user_count = 0;
                         foreach ($detail_list['list'] as $detail) {
+                            // 过滤掉当前分红人员
+                            if (in_array($detail['uid'], $current_fenhong_uids)) {
+                                continue;
+                            }
+                            
+                            $config_user_count++;
                             $total_user_count++;
+                            
                             $member = model('member')->getInfo(array('uid' => $detail['uid']), 'nickname,mobile,level_id');
                             $level = model('vip_level')->getInfo(array('id' => $member['level_id']), 'level_name');
                             
@@ -1411,12 +1423,16 @@ class distribute_award extends control
                                 'detail_id' => $detail['id']
                             );
                         }
+                        
+                        // 3. 更新配置中的人数统计（tjrs字段）
+                        $item['tjrs'] = $config_user_count;
+                        $processed_configs[] = $item;
                     }
                     
                     $tabs[] = array(
                         'id' => $tab_id,
                         'name' => $date_text,
-                        'count' => $total_user_count
+                        'count' => $total_user_count  // 4. 显示过滤后的总人数
                     );
                     
                     $tab_data[$tab_id] = array(
@@ -1434,6 +1450,37 @@ class distribute_award extends control
         } else {
             output_error('无效的请求方式');
         }
+    }
+    
+    /**
+     * 获取当前符合分红条件的用户UID列表
+     * 复用 lingshou_fenhong_sendOp 的逻辑
+     */
+    private function getCurrentFenhongUids()
+    {
+        $fenhong_level = model('vip_level')->where(array('id' => config('linshou_fenhong_level_id')))->order('level_sort ASC')->find();
+        $required_inviter_num = config('linshou_fenhong_inviter_num');
+        
+        $current_uids = array();
+        $result = model('member')->getList(array(), 'uid,level_id');
+        
+        foreach ($result['list'] as $rr) {
+            $member_level = model('vip_level')->field('level_sort')->where(array('id' => $rr['level_id']))->find();
+            
+            // 检查级别条件
+            if ($member_level['level_sort'] < $fenhong_level['level_sort']) {
+                continue;
+            }
+            
+            // 检查邀请人数条件
+            $inviter_num = model('member')->where(array('inviter_id' => $rr['uid'], 'has_buy_tygoods' => 1))->total();
+            
+            if ($inviter_num >= $required_inviter_num) {
+                $current_uids[] = $rr['uid'];
+            }
+        }
+        
+        return $current_uids;
     }
     
 }

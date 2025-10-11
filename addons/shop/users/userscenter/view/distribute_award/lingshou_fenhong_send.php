@@ -36,7 +36,8 @@
 		<dl>
 			<dt>分红总人数：</dt>
 			<dd>
-				<span class='highlight'><?=$output['total_fenshu']?></span>&nbsp;人
+				<span class='highlight' id='total_fenshu_display'><?=$output['total_fenshu']?></span>&nbsp;人
+				<span id='fenshu_detail' style='color: #999; font-size: 12px; margin-left: 10px;'></span>
 			</dd>
 		</dl>
 		<dl>
@@ -48,8 +49,8 @@
 		<dl>
 			<dt>发放范围：</dt>
 			<dd>
-				<input type='radio' name='range' value='0' checked>当前条件符合的人员</input>
-				<input type='radio' name='range' value='1'>当前条件符合的人员+历史保存名单</input>
+				<input type='radio' name='range' value='0' id='range_current' checked>当前条件符合的人员</input>
+				<input type='radio' name='range' value='1' id='range_all'>当前条件符合的人员+历史保存名单</input>
 			</dd>
 		</dl>
 		<div class='bottom'>
@@ -236,6 +237,33 @@ $('#query_end_date').datetimepicker({
 $(function() {
 	var btn_check = true;
 	
+	// 人数统计变量
+	var currentFenshuCount = <?=$output['total_fenshu']?>; // 当前分红人数
+	var historyFenshuCount = 0; // 历史名单人数（已过滤当前人员）
+	
+	// 监听发放范围切换
+	$('input[name="range"]').change(function() {
+		updateFenshuDisplay();
+	});
+	
+	// 更新分红总人数显示
+	function updateFenshuDisplay() {
+		var selectedRange = $('input[name="range"]:checked').val();
+		var totalDisplay = $('#total_fenshu_display');
+		var detailDisplay = $('#fenshu_detail');
+		
+		if (selectedRange == '0') {
+			// 只显示当前人数
+			totalDisplay.text(currentFenshuCount);
+			detailDisplay.text('');
+		} else if (selectedRange == '1') {
+			// 显示当前+历史人数
+			var totalCount = currentFenshuCount + historyFenshuCount;
+			totalDisplay.text(totalCount);
+			detailDisplay.text('(当前: ' + currentFenshuCount + ' + 历史: ' + historyFenshuCount + ')');
+		}
+	}
+	
 	// 提交发放按钮 - 保持原有逻辑不变
 	$('#btn_send').click(function(e) {
 		var msg = '您真的确定要发放吗？\n\n请确认！';
@@ -374,8 +402,16 @@ $(function() {
 		// 检查是否有数据
 		if (!tabs || tabs.length === 0) {
 			console.log('没有历史选项卡数据');
+			historyFenshuCount = 0;
 			return;
 		}
+		
+		// 计算历史名单总人数（已过滤当前人员）
+		historyFenshuCount = 0;
+		tabs.forEach(function(tab) {
+			historyFenshuCount += parseInt(tab.count) || 0;
+		});
+		console.log('历史名单总人数（已过滤）:', historyFenshuCount);
 		
 		// 生成选项卡按钮
 		tabs.forEach(function(tab) {
@@ -393,6 +429,9 @@ $(function() {
 			tabContent.html(contentHtml);
 			contentContainer.append(tabContent);
 		});
+		
+		// 初始化人数显示
+		updateFenshuDisplay();
 	}
 	
 	// 生成选项卡内容HTML
