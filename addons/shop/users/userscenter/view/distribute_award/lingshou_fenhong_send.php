@@ -252,6 +252,34 @@ $(function() {
 		var totalDisplay = $('#total_fenshu_display');
 		var detailDisplay = $('#fenshu_detail');
 		
+		// 根据历史名单人数控制第二个选项的显示和状态
+		var rangeAllOption = $('#range_all');
+		var rangeAllLabel = rangeAllOption.parent();
+		
+		if (historyFenshuCount <= 0) {
+			// 如果历史名单人数为0，禁用或隐藏第二个选项
+			rangeAllOption.prop('disabled', true);
+			rangeAllLabel.css({
+				'opacity': '0.5',
+				'cursor': 'not-allowed',
+				'color': '#999'
+			});
+			rangeAllLabel.attr('title', '暂无历史保存名单');
+			
+			// 强制选中第一个选项
+			$('#range_current').prop('checked', true);
+			selectedRange = '0';
+		} else {
+			// 如果有历史名单，启用第二个选项
+			rangeAllOption.prop('disabled', false);
+			rangeAllLabel.css({
+				'opacity': '1',
+				'cursor': 'pointer',
+				'color': ''
+			});
+			rangeAllLabel.attr('title', '');
+		}
+		
 		if (selectedRange == '0') {
 			// 只显示当前人数
 			totalDisplay.text(currentFenshuCount);
@@ -403,22 +431,29 @@ $(function() {
 		if (!tabs || tabs.length === 0) {
 			console.log('没有历史选项卡数据');
 			historyFenshuCount = 0;
+			updateFenshuDisplay();
 			return;
 		}
 		
-		// 计算历史名单总人数（已过滤当前人员）
+		// 计算历史名单总人数（已过滤当前人员，只统计启用的）
 		historyFenshuCount = 0;
 		tabs.forEach(function(tab) {
 			historyFenshuCount += parseInt(tab.count) || 0;
 		});
 		console.log('历史名单总人数（已过滤）:', historyFenshuCount);
 		
-		// 生成选项卡按钮
+		// 生成选项卡按钮（显示所有选项卡，包括人数为0的）
 		tabs.forEach(function(tab) {
 			console.log('生成选项卡:', tab.id, tab.name);
 			
+			// 如果人数为0，给予视觉区分
+			var countStyle = '';
+			if (parseInt(tab.count) === 0) {
+				countStyle = ' style="color: #f00;"';
+			}
+			
 			var tabButton = $('<a href="javascript:void(0);" onclick="switchTab(\'' + tab.id + '\')" class="btn btn-gray" style="padding: 5px 15px; font-size: 12px;">' +
-				'<i class="icon-calendar"></i> ' + tab.name + ' (' + tab.count + ')' +
+				'<i class="icon-calendar"></i> ' + tab.name + ' (<span' + countStyle + '>' + tab.count + '</span>)' +
 				'</a>');
 			tabContainer.append(tabButton);
 			
@@ -465,7 +500,7 @@ $(function() {
 			html += '<th class="w60">ID</th>';
 			html += '<th class="w120">级别要求</th>';
 			html += '<th class="w100">邀请人数要求</th>';
-			html += '<th class="w80">总人数</th>';
+			html += '<th class="w100">人数统计</th>';
 			html += '<th class="w80">状态</th>';
 			html += '<th class="w120">创建时间</th>';
 			html += '<th class="w120">操作</th>';
@@ -478,7 +513,24 @@ $(function() {
 				html += '<td class="tc">' + config.id + '</td>';
 				html += '<td class="tc">' + escapeHtml(config.level_name) + '</td>';
 				html += '<td class="tc">' + config.yqgmtytcrs + '人</td>';
-				html += '<td class="tc">' + config.tjrs + '人</td>';
+				html += '<td class="tc">';
+				// 显示人数统计：启用人数 / 总人数
+				var enabledCount = config.enabled_count || 0;
+				var totalCount = config.tjrs || 0;
+				
+				if (config.stat == 0) {
+					// 配置被禁用，所有人数都不计入统计
+					html += '<span style="color: #999; text-decoration: line-through;">' + totalCount + '人</span>';
+					html += '<br><small style="color: #f00;">配置已禁用，不计入统计</small>';
+				} else if (enabledCount < totalCount) {
+					// 配置启用，但有部分用户被禁用
+					html += '<span class="highlight">' + enabledCount + '</span> / ' + totalCount + '人';
+					html += '<br><small style="color: #999;">(含' + (totalCount - enabledCount) + '人禁用)</small>';
+				} else {
+					// 配置启用，所有用户都启用
+					html += '<span class="highlight">' + totalCount + '</span>人';
+				}
+				html += '</td>';
 				html += '<td class="tc">';
 				html += '<span class="label ' + (config.stat == 1 ? 'label-success' : 'label-default') + '">' + config.stat_text + '</span>';
 				html += '</td>';
@@ -498,44 +550,93 @@ $(function() {
 		
 		// 第二个表格：详细名单
 		if (tabData.members && tabData.members.length > 0) {
-			html += '<div>';
-			html += '<h4 style="margin-bottom: 10px; color: #333;">详细名单</h4>';
-			html += '<table class="css-default-table">';
-			html += '<thead>';
-			html += '<tr>';
-			html += '<th class="w60">序号</th>';
-			html += '<th class="w100">用户ID</th>';
-			html += '<th class="w150">昵称</th>';
-			html += '<th class="w120">手机号</th>';
-			html += '<th class="w100">级别</th>';
-			html += '<th class="w100">邀请人数</th>';
-			html += '<th class="w80">状态</th>';
-			html += '<th class="w100">操作</th>';
-			html += '</tr>';
-			html += '</thead>';
-			html += '<tbody>';
-			
-			tabData.members.forEach(function(member, index) {
-				html += '<tr>';
-				html += '<td class="tc">' + (index + 1) + '</td>';
-				html += '<td class="tc">' + member.uid + '</td>';
-				html += '<td>' + escapeHtml(member.nickname) + '</td>';
-				html += '<td>' + escapeHtml(member.mobile) + '</td>';
-				html += '<td class="tc"><span class="label label-success">' + escapeHtml(member.level_name) + '</span></td>';
-				html += '<td class="tc">' + member.tjrs + '人</td>';
-				html += '<td class="tc">';
-				html += '<span class="label ' + (member.stat == 1 ? 'label-success' : 'label-default') + '">' + member.stat_text + '</span>';
-				html += '</td>';
-				html += '<td class="tc">';
-				html += '<a href="javascript:void(0);" onclick="toggleUserStatus(' + member.detail_id + ', ' + (member.stat == 1 ? 0 : 1) + ')" class="btn ' + (member.stat == 1 ? 'btn-warning' : 'btn-success') + '" style="padding: 2px 8px; font-size: 11px;">';
-				html += (member.stat == 1 ? '禁用' : '启用');
-				html += '</a>';
-				html += '</td>';
-				html += '</tr>';
+			// 计算实际计入统计的人数
+			var countableMembers = 0;
+			tabData.members.forEach(function(member) {
+				if (member.config_stat == 1 && member.stat == 1) {
+					countableMembers++;
+				}
 			});
 			
-			html += '</tbody>';
-			html += '</table>';
+			html += '<div>';
+			html += '<h4 style="margin-bottom: 10px; color: #333;">详细名单';
+			if (countableMembers === 0) {
+				html += '<span style="color: #f00; font-size: 12px; margin-left: 10px;">(当前无可统计人数)</span>';
+			}
+			html += '</h4>';
+			
+			// 只有当有可统计人数时才显示统计规则和表格
+			if (countableMembers > 0) {
+				html += '<div style="background-color: #f0f9ff; border-left: 4px solid #007cba; padding: 10px; margin-bottom: 10px; font-size: 12px;">';
+				html += '<strong>统计规则：</strong> 只有<span style="color: #007cba;">分红配置启用</span>且<span style="color: #007cba;">用户启用</span>时，才计入分红人数统计。';
+				html += '配置被禁用时，该配置下的所有用户都<span style="color: #f00;">不计入统计</span>（显示为灰色背景）。';
+				html += '</div>';
+				html += '<table class="css-default-table">';
+				html += '<thead>';
+				html += '<tr>';
+				html += '<th class="w60">序号</th>';
+				html += '<th class="w100">用户ID</th>';
+				html += '<th class="w150">昵称</th>';
+				html += '<th class="w120">手机号</th>';
+				html += '<th class="w100">级别</th>';
+				html += '<th class="w100">邀请人数</th>';
+				html += '<th class="w80">状态</th>';
+				html += '<th class="w100">操作</th>';
+				html += '</tr>';
+				html += '</thead>';
+				html += '<tbody>';
+				
+				tabData.members.forEach(function(member, index) {
+					// 判断是否计入统计：配置启用 且 用户启用
+					var isCountable = (member.config_stat == 1 && member.stat == 1);
+					var rowStyle = '';
+					var rowClass = '';
+					
+					// 如果配置被禁用，整行变灰
+					if (member.config_stat == 0) {
+						rowStyle = ' style="background-color: #f9f9f9; opacity: 0.7;"';
+						rowClass = ' class="config-disabled"';
+					}
+					
+					html += '<tr' + rowClass + rowStyle + '>';
+					html += '<td class="tc">' + (index + 1) + '</td>';
+					html += '<td class="tc">' + member.uid + '</td>';
+					html += '<td>' + escapeHtml(member.nickname) + '</td>';
+					html += '<td>' + escapeHtml(member.mobile) + '</td>';
+					html += '<td class="tc"><span class="label label-success">' + escapeHtml(member.level_name) + '</span></td>';
+					html += '<td class="tc">' + member.tjrs + '人</td>';
+					html += '<td class="tc">';
+					
+					// 状态显示逻辑
+					if (member.config_stat == 0) {
+						// 配置被禁用
+						html += '<span class="label label-default" title="所属配置已禁用">配置已禁</span>';
+					} else if (member.stat == 1) {
+						// 配置启用，用户启用
+						html += '<span class="label label-success" title="计入分红统计">启用</span>';
+					} else {
+						// 配置启用，用户禁用
+						html += '<span class="label label-default" title="不计入分红统计">不启用</span>';
+					}
+					
+					html += '</td>';
+					html += '<td class="tc">';
+					html += '<a href="javascript:void(0);" onclick="toggleUserStatus(' + member.detail_id + ', ' + (member.stat == 1 ? 0 : 1) + ')" class="btn ' + (member.stat == 1 ? 'btn-warning' : 'btn-success') + '" style="padding: 2px 8px; font-size: 11px;">';
+					html += (member.stat == 1 ? '禁用' : '启用');
+					html += '</a>';
+					html += '</td>';
+					html += '</tr>';
+				});
+				
+				html += '</tbody>';
+				html += '</table>';
+			} else {
+				// 当统计人数为0时，显示提示信息
+				html += '<div class="alert alert-info" style="margin-top: 15px;">';
+				html += '<i class="icon-info-sign"></i> 当前日期的所有分红配置或用户均已被禁用，暂无可统计的分红人数。';
+				html += '<br><small style="color: #999; margin-top: 5px; display: inline-block;">提示：您可以在上方的"分红配置信息"中查看并管理配置状态。</small>';
+				html += '</div>';
+			}
 			html += '</div>';
 		} else {
 			html += '<div class="alert alert-info" style="margin-top: 15px;">';
@@ -650,6 +751,10 @@ $(function() {
 	
 	// 页面加载时自动加载历史选项卡
 	$(document).ready(function() {
+		// 初始化人数显示（历史人数初始为0）
+		updateFenshuDisplay();
+		
+		// 加载历史选项卡数据
 		loadHistoryTabs();
 		
 		// 如果URL中有历史选项卡参数，自动切换到对应选项卡

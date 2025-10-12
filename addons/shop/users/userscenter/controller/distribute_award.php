@@ -1385,7 +1385,7 @@ class distribute_award extends control
                     // 生成安全的选项卡ID，只保留字母数字和下划线
                     $tab_id = 'history_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $date_text);
                     
-                    // 计算所有用户总数（包括禁用状态的用户，但排除当前分红人员）
+                    // 计算启用状态的用户总数（排除当前分红人员和禁用状态的用户）
                     $total_user_count = 0;
                     $all_members = array();
                     
@@ -1398,20 +1398,20 @@ class distribute_award extends control
                         // 获取该配置下的所有用户详情（包括禁用状态的用户）
                         $detail_list = model('ls_his_dtl')->getList(array('his_id' => $item['id']), '*', 'id ASC', 100);
                         
-                        // 2. 计算过滤后的人数
+                        // 2. 计算过滤后的人数（只统计启用状态）
                         $config_user_count = 0;
+                        $config_enabled_count = 0; // 启用状态的人数
+                        
                         foreach ($detail_list['list'] as $detail) {
                             // 过滤掉当前分红人员
                             if (in_array($detail['uid'], $current_fenhong_uids)) {
                                 continue;
                             }
                             
-                            $config_user_count++;
-                            $total_user_count++;
-                            
                             $member = model('member')->getInfo(array('uid' => $detail['uid']), 'nickname,mobile,level_id');
                             $level = model('vip_level')->getInfo(array('id' => $member['level_id']), 'level_name');
                             
+                            // 所有记录都添加到列表中（包括禁用的）
                             $all_members[] = array(
                                 'uid' => $detail['uid'],
                                 'nickname' => !empty($member['nickname']) ? $member['nickname'] : $member['mobile'],
@@ -1420,19 +1420,30 @@ class distribute_award extends control
                                 'tjrs' => $detail['tjrs'],
                                 'stat' => $detail['stat'],
                                 'stat_text' => $detail['stat'] == 1 ? '启用' : '不启用',
-                                'detail_id' => $detail['id']
+                                'detail_id' => $detail['id'],
+                                'config_stat' => $item['stat'], // 添加配置状态
+                                'config_id' => $item['id'] // 添加配置ID
                             );
+                            
+                            $config_user_count++; // 所有过滤后的人数（含禁用）
+                            
+                            // 只有配置启用且用户启用时才计入统计人数
+                            if ($item['stat'] == 1 && $detail['stat'] == 1) {
+                                $config_enabled_count++;
+                                $total_user_count++;
+                            }
                         }
                         
-                        // 3. 更新配置中的人数统计（tjrs字段）
-                        $item['tjrs'] = $config_user_count;
+                        // 3. 更新配置中的人数统计（tjrs字段显示总人数，enabled_count显示启用人数）
+                        $item['tjrs'] = $config_user_count; // 总人数（含禁用）
+                        $item['enabled_count'] = $config_enabled_count; // 启用人数
                         $processed_configs[] = $item;
                     }
                     
                     $tabs[] = array(
                         'id' => $tab_id,
                         'name' => $date_text,
-                        'count' => $total_user_count  // 4. 显示过滤后的总人数
+                        'count' => $total_user_count  // 4. 显示启用状态的总人数
                     );
                     
                     $tab_data[$tab_id] = array(
