@@ -1,0 +1,61 @@
+---
+description: 项目结构和目录约定
+alwaysApply: true
+---
+
+# 项目结构
+
+## 目录结构
+
+```
+YZDS/
+├── addons/shop/          # 核心应用目录
+│   ├── common/           # 公共资源
+│   │   ├── model/        # 数据模型
+│   │   └── vendor/       # 第三方库
+│   ├── core/             # 核心框架
+│   │   ├── base/         # 基础类
+│   │   ├── helpers/      # 辅助函数
+│   │   └── lib/          # 库文件
+│   ├── front/            # 前端应用
+│   │   ├── shop/         # 商城模块
+│   │   ├── api/          # API 模块
+│   │   └── crontab/      # 定时任务
+│   ├── users/            # 用户中心
+│   │   └── userscenter/  # 用户中心控制器和视图
+│   ├── seller/           # 商家中心
+│   │   └── sellercenter/ # 商家中心控制器和视图
+│   └── config/           # 配置文件
+├── public/               # Web 入口目录
+│   ├── index.php         # 主入口（自动跳转）
+│   ├── front.php         # 前端入口
+│   ├── api.php           # API 入口
+│   └── uploadfiles/      # 上传文件目录
+└── data/                 # 数据目录
+    ├── cache/            # 缓存
+    ├── log/              # 日志
+    └── temp/             # 临时文件
+```
+
+## 入口文件
+
+- `public/index.php` - 主入口，根据设备类型跳转
+- `public/front.php` - 前端商城入口
+- `public/api.php` - API 接口入口
+- `public/crontab.php` - 定时任务入口
+- `public/swoole.php` - Swoole WebSocket 服务入口
+
+## 模块映射
+
+- `index` → `front/shop`
+- `api` → `front/api`
+- `boss` → `users/userscenter`
+- `store` → `seller/sellercenter`
+
+## 常量定义
+
+- `BASE_PATH` - 项目根目录
+- `DATA_PATH` - 数据目录
+- `APP_PATH` - 应用目录
+- `STATIC_URL` - 静态资源 URL
+- `UPLOADFILES_URL` - 上传文件 URL

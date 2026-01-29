@@ -1,0 +1,262 @@
+# 分红券合并逻辑文档
+
+## 概述
+
+分红券合并是指当用户激活提货券时，系统自动检查其上级联创用户是否满足合成分红券的条件。如果满足条件，则从3个下级用户中各扣除1个激活提货券，给联创用户增加1张分红券。
+
+## 核心概念
+
+### 1. 联创级别
+- **定义**：系统中级别最高的用户等级（`level_default = 0` 且 `level_sort` 最大）
+- **获取方式**：`model('vip_level')->field('id')->where(array('level_default' => 0))->order('level_sort DESC')->find()`
+
+### 2. 激活提货券（can_tihuoquan_num）
+- **定义**：用户已激活的提货券数量
+- **存储位置**：
+  - `member` 表的 `can_tihuoquan_num` 字段
+  - `distribute_account` 表的 `can_tihuoquan_num` 字段
+- **增加时机**：用户激活提货券时，会给自己和所有上级用户各增加1个激活提货券
+
+### 3. 分红券（fenhong_quan）
+- **定义**：联创用户拥有的分红券数量
+- **存储位置**：`member` 表的 `fenhong_quan` 和 `total_fenhong_quan` 字段
+- **用途**：用于参与绩效分红计算
+
+## 触发时机
+
+分红券合并逻辑在以下场景触发：
+
+1. **提货券激活时**（主要触发点）
+   - 文件位置：`addons/shop/common/logic/tihuo_buy.php`
+   - 方法：`over_do()`
+   - 触发代码：
+   ```php
+   logic('shop_queue')->tihuoquan_to_fenhongquan(array('uid' => $member_info['uid']));
+   ```
+
+2. **手动发放分红券**
+   - 文件位置：`addons/shop/users/userscenter/controller/distribute_award.php`
+   - 方法：`execute_manual_fenhongquanOp()`
+   - 说明：管理员可以手动触发分红券合并，包含更完善的日志和事务处理
+
+## 合并规则
+
+### 基本规则
+
+1. **查找联创用户**
+   - 从激活用户的上级路径（`dis_path`）中，从下往上查找
+   - 找到第一个联创级别的用户
+
+2. **检查直推用户**
+   - 联创用户必须有至少3个直推用户（`inviter_id = 联创用户uid`）
+   - 从直推用户中查找有激活提货券的用户（`can_tihuoquan_num > 0`）
+
+3. **合并条件**
+   - 必须找到至少3个有激活提货券的用户
+   - 优先使用直推用户自己的激活提货券
+   - 如果直推用户没有激活提货券，可以在其团队中寻找（通过 `dis_path` 匹配）
+
+4. **执行合并**
+   - 从3个用户中各扣除1个激活提货券（同时更新 `member` 和 `distribute_account` 表）
+   - 给联创用户增加1张分红券（`fenhong_quan` 和 `total_fenhong_quan` 各加1）
+
+### 详细流程
+
+```
+1. 用户A激活提货券
+   ↓
+2. 获取用户A的上级路径（dis_path）
+   ↓
+3. 从下往上遍历上级路径
+   ↓
+4. 找到第一个联创级别的用户（联创用户B）
+   ↓
+5. 获取联创用户B的所有直推用户
+   ↓
+6. 检查直推用户数量是否 >= 3
+   ↓
+7. 从直推用户中查找有激活提货券的用户
+   - 如果直推用户有激活提货券，直接使用
+   - 如果直推用户没有，在其团队中查找（dis_path 包含该用户）
+   ↓
+8. 如果找到 >= 3 个有激活提货券的用户
+   ↓
+9. 从这3个用户中各扣除1个激活提货券
+   ↓
+10. 给联创用户B增加1张分红券
+```
+
+## 代码实现
+
+### 主要实现文件
+
+#### 1. 自动合并逻辑
+**文件**：`addons/shop/common/logic/shop_queue.php`  
+**方法**：`tihuoquan_to_fenhongquan($param)`
+
+**核心代码逻辑**：
+```php
+// 1. 获取联创级别
+$lianchuang_level = model('vip_level')
+    ->field('id')
+    ->where(array('level_default' => 0))
+    ->order('level_sort DESC')
+    ->find();
+
+// 2. 获取激活用户的上级路径
+$dis_account = model('distribute_account')
+    ->getInfo(array('uid' => $param['uid']), 'dis_path');
+$parent = $dis_account['dis_path'] 
+    ? explode(',', trim($dis_account['dis_path'], ',')) 
+    : array();
+$parent = array_reverse($parent); // 从下往上
+
+// 3. 获取所有上级用户的级别
+$distributor_levels = array();
+$result = model('distribute_account')
+    ->getList(array('uid' => $parent), 'uid,level_id');
+foreach ($result['list'] as $rr) {
+    $distributor_levels[$rr['uid']] = $rr['level_id'];
+}
+
+// 4. 查找联创用户并检查合并条件
+foreach ($parent as $uid) {
+    if ($distributor_levels[$uid] == $lianchuang_level['id']) {
+        // 获取直推用户
+        $invite_list = model('distribute_account')
+            ->field('uid,can_tihuoquan_num')
+            ->where(array('inviter_id' => $uid))
+            ->select();
+        
+        if (count($invite_list) < 3) {
+            continue;
+        }
+        
+        // 查找有激活提货券的用户
+        $up_accounts = array();
+        foreach ($invite_list as $v) {
+            if (count($up_accounts) >= 3) {
+                break;
+            }
+            if ($v['can_tihuoquan_num'] > 0) {
+                $up_accounts[] = $v;
+            }
+        }
+        
+        // 5. 执行合并
+        if (count($up_accounts) >= 3) {
+            // 扣除激活提货券
+            foreach($up_accounts as $account) {
+                model('member')
+                    ->where(array('uid' => $account['uid']))
+                    ->update('can_tihuoquan_num=can_tihuoquan_num-1');
+                model('distribute_account')
+                    ->where(array('uid' => $account['uid']))
+                    ->update('can_tihuoquan_num=can_tihuoquan_num-1');
+            }
+            
+            // 增加分红券
+            model('member')
+                ->where(array('uid' => $uid))
+                ->update('fenhong_quan=fenhong_quan+1,total_fenhong_quan=total_fenhong_quan+1');
+            
+            break; // 只处理第一个满足条件的联创用户
+        }
+    }
+}
+```
+
+#### 2. 手动发放逻辑
+**文件**：`addons/shop/users/userscenter/controller/distribute_award.php`  
+**方法**：
+- `manual_fenhongquanOp()` - 预览可合成的分红券
+- `execute_manual_fenhongquanOp()` - 执行手动发放
+
+**特点**：
+- 包含事务处理，确保数据一致性
+- 详细的日志记录，包括调试信息
+- 防止重复消耗用户（每个联创用户独立的已消耗用户列表）
+- 支持在团队中查找有激活提货券的用户
+
+**关键改进**：
+```php
+// 如果直推用户没有激活提货券，在团队中查找
+$team_user = model('distribute_account')
+    ->field('uid,can_tihuoquan_num')
+    ->where(array(
+        'can_tihuoquan_num >' => 0, 
+        'dis_path' => '%,' . $invite_user['uid'] . ',%'
+    ))
+    ->find();
+```
+
+#### 3. 触发点
+**文件**：`addons/shop/common/logic/tihuo_buy.php`  
+**方法**：`over_do()`
+
+**触发时机**：
+- 提货券激活时（`state = 0` 变为已激活）
+- 同时给用户和所有上级用户增加激活提货券数量
+
+## 数据表字段说明
+
+### member 表
+- `can_tihuoquan_num`：激活提货券数量（参与合并时会被扣除）
+- `fenhong_quan`：当前分红券数量（合并时增加）
+- `total_fenhong_quan`：累计分红券数量（合并时增加，用于统计）
+
+### distribute_account 表
+- `can_tihuoquan_num`：激活提货券数量（与 member 表同步）
+- `dis_path`：分销路径，格式：`,uid1,uid2,uid3,`
+- `inviter_id`：推荐人ID（用于查找直推用户）
+- `level_id`：用户级别ID
+
+### vip_level 表
+- `level_default`：是否为默认级别（0=非默认，联创级别为0）
+- `level_sort`：级别排序（数值越大级别越高）
+
+## 注意事项
+
+### 1. 数据一致性
+- `member` 表和 `distribute_account` 表的 `can_tihuoquan_num` 字段需要同步更新
+- 手动发放功能使用了事务处理，但自动合并逻辑没有使用事务（可能存在数据不一致风险）
+
+### 2. 重复消耗问题
+- 自动合并逻辑：每个联创用户只处理一次，找到第一个满足条件的就停止
+- 手动发放逻辑：使用 `$consumed_users_for_this_lianchuang` 数组防止同一用户被重复消耗
+
+### 3. 团队查找逻辑
+- 当前自动合并逻辑（`tihuoquan_to_fenhongquan`）只查找直推用户，不查找团队用户
+- 手动发放逻辑和旧版逻辑（`tihuoquan_to_fenhongquan20240530`）支持在团队中查找
+
+### 4. 历史版本
+代码中存在多个版本的合并逻辑：
+- `tihuoquan_to_fenhongquan()` - 当前使用的版本（只查找直推用户）
+- `tihuoquan_to_fenhongquan20240530()` - 支持团队查找的版本
+- `tihuoquan_to_fenhongquan_20240429()` - 联创用户自己消耗3个激活提货券的版本
+- `tihuoquan_to_fenhongquan_old()` - 旧版本，包含向上级联创赠送激活提货券的逻辑
+
+## 使用场景
+
+### 1. 自动合并（推荐）
+- 用户激活提货券时自动触发
+- 无需人工干预
+- 实时处理
+
+### 2. 手动发放
+- 管理员可以批量处理所有符合条件的联创用户
+- 包含详细的日志和错误处理
+- 适合定期批量处理或修复数据
+
+**访问路径**：
+- 预览：`/users/userscenter/distribute_award/manual_fenhongquan`
+- 执行：`/users/userscenter/distribute_award/execute_manual_fenhongquan`
+
+## 相关配置
+
+- **联创级别**：通过 `vip_level` 表配置，`level_default = 0` 且 `level_sort` 最大
+- **分红比例**：通过 `yeji_fenhong_bili` 配置项设置绩效分红比例
+
+## 总结
+
+分红券合并是一个自动化的激励机制，通过将下级用户的激活提货券合并为联创用户的分红券，激励联创用户发展团队。核心逻辑是从激活用户的上级路径中找到联创用户，检查其直推用户是否有足够的激活提货券，如果满足条件则执行合并操作。

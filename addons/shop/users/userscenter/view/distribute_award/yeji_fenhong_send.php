@@ -48,7 +48,18 @@
 		<dl>
 			<dt>分红条件：</dt>
 			<dd>
-				联创级别（<span class='highlight'><?=$output['lianchuang_level']['level_name']?></span>）且持有分红券
+				<?php if (!empty($output['fenhong_levels'])): ?>
+					以下级别且持有分红券：
+					<?php 
+					$level_names = array();
+					foreach($output['fenhong_levels'] as $level) {
+						$level_names[] = '<span class="highlight">' . htmlspecialchars($level['level_name']) . '</span>';
+					}
+					echo implode('、', $level_names);
+					?>
+				<?php else: ?>
+					<span class='highlight'>未配置绩效分红级别</span>
+				<?php endif; ?>
 			</dd>
 		</dl>
 		<div class='bottom'>
@@ -60,7 +71,7 @@
 <!-- 新增：详细人员列表 -->
 <div class='css-form-default' style='margin-top: 20px;'>
 	<h3 style='margin-bottom: 15px; color: #333; border-bottom: 2px solid #007cba; padding-bottom: 8px;'>
-		<i class='icon-users'></i> 符合分红条件的联创人员列表
+		<i class='icon-users'></i> 符合分红条件的用户列表
 	</h3>
 	
 	<?php if (!empty($output['detailed_member_list'])): ?>
@@ -105,7 +116,7 @@
 	
 	<?php else: ?>
 		<div class='alert alert-info' style='margin-top: 15px;'>
-			<i class='icon-info-sign'></i> 当前没有持有分红券的联创用户
+			<i class='icon-info-sign'></i> 当前没有持有分红券的符合条件用户
 		</div>
 	<?php endif; ?>
 </div>

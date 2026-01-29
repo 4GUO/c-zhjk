@@ -316,7 +316,20 @@ class distribute_award extends control
 
     public function yeji_fenhong_sendOp()
     {
-        $lianchuang_level = model('vip_level')->where(array('level_default' => 0))->order('level_sort DESC')->find();
+        // 获取允许绩效分红的级别ID列表
+        $yeji_fenhong_level_ids = get_yeji_fenhong_level_ids($this->uniacid);
+        if (empty($yeji_fenhong_level_ids)) {
+            // 如果没有配置，保持向后兼容：使用联创级别
+            $lianchuang_level = model('vip_level')->where(array('level_default' => 0))->order('level_sort DESC')->find();
+            $yeji_fenhong_level_ids = $lianchuang_level ? array($lianchuang_level['id']) : array();
+        }
+        
+        // 获取所有允许分红的级别信息（用于显示）
+        $fenhong_levels = array();
+        if (!empty($yeji_fenhong_level_ids)) {
+            $fenhong_levels = model('vip_level')->field('id,level_name')->where(array('id' => $yeji_fenhong_level_ids))->order('level_sort ASC')->select();
+        }
+        
         if (chksubmit()) {
             //发放分红
             $yeji = input('yeji', 0, 'floatval');
@@ -332,19 +345,52 @@ class distribute_award extends control
             if (!$start_unixtime || !$end_unixtime) {
                 output_error('请选择时间');
             }
-            $res = model('member')->field('SUM(fenhong_quan) as total_fenhong_quan')->where(array('level_id' => $lianchuang_level['id']))->find();
+            
+            if (empty($yeji_fenhong_level_ids)) {
+                output_error('未配置绩效分红级别');
+            }
+            
+            // 获取级别信息映射
+            $level_map = array();
+            foreach ($fenhong_levels as $level) {
+                $level_map[$level['id']] = $level['level_name'];
+            }
+            
+            // 查询所有配置级别中持有分红券的用户（只查询有分红券的用户）
+            $res = model('member')->field('SUM(fenhong_quan) as total_fenhong_quan')->where(array('level_id' => $yeji_fenhong_level_ids, 'fenhong_quan >' => 0))->find();
             if (!$res['total_fenhong_quan']) {
                 output_error('当前暂无分红券');
             }
-            $lc_members = model('member')->field('uid,fenhong_quan')->where(array('level_id' => $lianchuang_level['id']))->select();
+            
+            // 查询所有配置级别中持有分红券的用户
+            $lc_members = model('member')
+                ->field('uid,fenhong_quan,level_id')
+                ->where(array('level_id' => $yeji_fenhong_level_ids, 'fenhong_quan >' => 0))
+                ->select();
+            
+            if (empty($lc_members)) {
+                output_error('当前没有持有分红券的符合条件用户');
+            }
+            
+            // 计算每张分红券的价值
+            $per_quan_value = priceFormat(bcdiv(($yeji * config('yeji_fenhong_bili') * 0.01), $res['total_fenhong_quan'], 2));
+            
+            // 遍历所有配置级别的用户，计算分红
             foreach ($lc_members as $v) {
-                $detail_bonus = priceFormat(bcdiv(($yeji * config('yeji_fenhong_bili') * 0.01), $res['total_fenhong_quan'], 2) * $v['fenhong_quan']);//加权分红
+                // 计算用户分红金额 = 每张分红券价值 × 用户持有分红券数
+                $detail_bonus = priceFormat($per_quan_value * $v['fenhong_quan']);
                 if ($detail_bonus <= 0) {
                     continue;
                 }
-                $desc = '获得绩效分红' . $detail_bonus . '元，可用分红券数量' . $v['fenhong_quan'] . '，每张分红券值' . priceFormat(bcdiv(($yeji * config('yeji_fenhong_bili') * 0.01), $res['total_fenhong_quan'], 2)) . '元';
+                
+                // 获取用户级别名称
+                $level_name = isset($level_map[$v['level_id']]) ? $level_map[$v['level_id']] : '';
+                
+                // 构建分红描述，包含级别信息
+                $desc = '获得' . ($level_name ? $level_name . '级别' : '') . '绩效分红' . $detail_bonus . '元，可用分红券数量' . $v['fenhong_quan'] . '，每张分红券值' . $per_quan_value . '元';
+                
                 $detail_data[] = array(
-                    'uniacid' => 1,
+                    'uniacid' => $this->uniacid,
                     'uid' => $v['uid'],
                     'detail_bonus' => $detail_bonus,
                     'detail_desc' => $desc,
@@ -353,9 +399,13 @@ class distribute_award extends control
                     'type' => 2,
                     'total_turnover' => $yeji,
                 );
-                //model('member')->where(array('uid' => $v['uid']))->update('fenhong_quan=fenhong_quan-1');
-                model('member')->where(array('level_id' => $lianchuang_level['id']))->update('fenhong_quan=0');//edit by 20240702
             }
+            
+            // 清空所有配置级别用户的分红券
+            if (!empty($yeji_fenhong_level_ids)) {
+                model('member')->where(array('level_id' => $yeji_fenhong_level_ids))->update('fenhong_quan=0');
+            }
+            
             if ($detail_data) {
                 model('distribute_fenhong_record_detail')->insertAll($detail_data);
                 foreach ($detail_data as $v) {
@@ -383,15 +433,7 @@ class distribute_award extends control
                 $where['used_time <='] = $end_unixtime;
             }
             if ($where) {
-                //$where['state'] = array(0,1,2);
                 $where['state'] = array(1, 2);
-                //所有联创绩效总和
-                $lc_uids = array();
-                $res = model('member')->getList(array('level_id' => $lianchuang_level['id']), 'uid');
-                foreach ($res['list'] as $v) {
-                    $lc_uids[] = $v['uid'];
-                }
-                //$where['uid'] = $lc_uids;
                 $total_yeji = 0;
                 $shop_goods_tihuoquan = model('shop_goods_tihuoquan')->field('amount')->where($where)->select();
                 foreach ($shop_goods_tihuoquan as $v) {
@@ -400,29 +442,43 @@ class distribute_award extends control
                 $this->assign('total_yeji', $total_yeji);
             }
             
-            $res = model('member')->field('SUM(fenhong_quan) as total_fenhong_quan')->where(array('level_id' => $lianchuang_level['id']))->find();
-            $this->assign('total_fenhong_quan', $res['total_fenhong_quan'] ?? 0);
+            // 计算总分红券数
+            $res = model('member')->field('SUM(fenhong_quan) as total_fenhong_quan')->where(array('level_id' => $yeji_fenhong_level_ids))->find();
+            $total_fenhong_quan = $res['total_fenhong_quan'] ?? 0;
+            $this->assign('total_fenhong_quan', $total_fenhong_quan);
             
-            // 新增：获取联创用户详细信息
+            // 获取详细成员列表
             $detailed_member_list = array();
-            $lc_members = model('member')->field('uid,nickname,mobile,fenhong_quan,total_fenhong_quan')->where(array('level_id' => $lianchuang_level['id']))->select();
-            
-            foreach ($lc_members as $member) {
-                if ($member['fenhong_quan'] > 0) {
-                    $detailed_member_list[] = array(
-                        'uid' => $member['uid'],
-                        'nickname' => !empty($member['nickname']) ? $member['nickname'] : $member['mobile'],
-                        'mobile' => $member['mobile'],
-                        'level_name' => $lianchuang_level['level_name'],
-                        'fenhong_quan' => $member['fenhong_quan'],
-                        'total_fenhong_quan' => $member['total_fenhong_quan'],
-                        'fenhong_bili' => config('yeji_fenhong_bili')
-                    );
+            if (!empty($yeji_fenhong_level_ids)) {
+                // 分别查询 member 和 vip_level，然后在 PHP 中合并
+                $lc_members = model('member')
+                    ->field('uid,fenhong_quan,total_fenhong_quan,level_id,nickname,mobile')
+                    ->where(array('level_id' => $yeji_fenhong_level_ids, 'fenhong_quan >' => 0))
+                    ->select();
+                
+                // 获取级别信息映射
+                $level_info_map = array();
+                if (!empty($lc_members)) {
+                    $level_ids = array_unique(array_column($lc_members, 'level_id'));
+                    $level_list = model('vip_level')->field('id,level_name')->where(array('id' => $level_ids))->select();
+                    foreach ($level_list as $level) {
+                        $level_info_map[$level['id']] = $level['level_name'];
+                    }
+                }
+                
+                // 计算每个成员的分红比例
+                foreach ($lc_members as $member) {
+                    $member['level_name'] = isset($level_info_map[$member['level_id']]) ? $level_info_map[$member['level_id']] : '';
+                    $member['fenhong_bili'] = $total_fenhong_quan > 0 
+                        ? round(($member['fenhong_quan'] / $total_fenhong_quan) * 100, 2) 
+                        : 0;
+                    $member['nickname'] = !empty($member['nickname']) ? $member['nickname'] : ($member['mobile'] ?? '');
+                    $detailed_member_list[] = $member;
                 }
             }
             
+            $this->assign('fenhong_levels', $fenhong_levels);
             $this->assign('detailed_member_list', $detailed_member_list);
-            $this->assign('lianchuang_level', $lianchuang_level);
             $this->display();
         }
     }
@@ -808,14 +864,26 @@ class distribute_award extends control
     public function manual_fenhongquanOp()
     {
         if (IS_API) {
-            // 获取联创级别（最高级别）
-            $lianchuang_level = model('vip_level')->field('id,level_name')->where(array('uniacid' => $this->uniacid, 'level_default' => 0))->order('level_sort DESC')->find();
-            if (!$lianchuang_level) {
-                output_error('未找到联创级别配置');
+            // 获取允许绩效分红的级别ID列表
+            $yeji_fenhong_level_ids = get_yeji_fenhong_level_ids($this->uniacid);
+            if (empty($yeji_fenhong_level_ids)) {
+                // 如果没有配置，保持向后兼容：使用联创级别
+                $lianchuang_level = model('vip_level')->field('id,level_name')->where(array('uniacid' => $this->uniacid, 'level_default' => 0))->order('level_sort DESC')->find();
+                if (!$lianchuang_level) {
+                    output_error('未找到绩效分红级别配置');
+                }
+                $yeji_fenhong_level_ids = array($lianchuang_level['id']);
             }
 
-            // 获取所有联创级别的用户
-            $lianchuang_users = model('distribute_account')->field('uid,can_tihuoquan_num')->where(array('uniacid' => $this->uniacid, 'level_id' => $lianchuang_level['id']))->select();
+            // 获取所有允许分红的级别用户
+            $lianchuang_users = model('distribute_account')->field('uid,can_tihuoquan_num,level_id')->where(array('uniacid' => $this->uniacid, 'level_id' => $yeji_fenhong_level_ids))->select();
+            
+            // 获取级别信息映射
+            $fenhong_levels = model('vip_level')->field('id,level_name')->where(array('id' => $yeji_fenhong_level_ids))->order('level_sort ASC')->select();
+            $level_map = array();
+            foreach ($fenhong_levels as $level) {
+                $level_map[$level['id']] = $level['level_name'];
+            }
             
             $synthesis_list = array(); // 可合成的列表
             $total_synthesis_count = 0; // 总可合成数量
@@ -872,10 +940,12 @@ class distribute_award extends control
                         }
                     }
                     
+                    $level_name = isset($level_map[$lianchuang_user['level_id']]) ? $level_map[$lianchuang_user['level_id']] : '';
                     $synthesis_item = array(
                         'lianchuang_uid' => $uid,
                         'lianchuang_nickname' => $lianchuang_info['nickname'] ?: $lianchuang_info['mobile'],
                         'lianchuang_mobile' => $lianchuang_info['mobile'],
+                        'lianchuang_level_name' => $level_name,
                         'consumed_users' => $consumed_users_info,
                         'consumed_tihuoquan_count' => 3,
                         'can_synthesis' => true
@@ -890,8 +960,14 @@ class distribute_award extends control
             $debug_info = array();
             $debug_info['total_lianchuang_users'] = count($lianchuang_users);
             
+            // 构建级别名称列表
+            $level_names = array();
+            foreach ($fenhong_levels as $level) {
+                $level_names[] = $level['level_name'];
+            }
+            
             $result = array(
-                'lianchuang_level' => $lianchuang_level['level_name'],
+                'fenhong_levels' => $level_names,
                 'total_synthesis_count' => $total_synthesis_count,
                 'synthesis_list' => $synthesis_list,
                 'can_synthesis' => $total_synthesis_count > 0,
@@ -917,16 +993,30 @@ class distribute_award extends control
             $log_data = array();
             $log_data['start_time'] = date('Y-m-d H:i:s', $start_time);
             
-            // 获取联创级别
-            $lianchuang_level = model('vip_level')->field('id,level_name')->where(array('uniacid' => $this->uniacid, 'level_default' => 0))->order('level_sort DESC')->find();
-            if (!$lianchuang_level) {
-                output_error('未找到联创级别配置');
+            // 获取允许绩效分红的级别ID列表
+            $yeji_fenhong_level_ids = get_yeji_fenhong_level_ids($this->uniacid);
+            if (empty($yeji_fenhong_level_ids)) {
+                // 如果没有配置，保持向后兼容：使用联创级别
+                $lianchuang_level = model('vip_level')->field('id,level_name')->where(array('uniacid' => $this->uniacid, 'level_default' => 0))->order('level_sort DESC')->find();
+                if (!$lianchuang_level) {
+                    output_error('未找到绩效分红级别配置');
+                }
+                $yeji_fenhong_level_ids = array($lianchuang_level['id']);
             }
             
-            $log_data['lianchuang_level'] = $lianchuang_level['level_name'] . '(ID:' . $lianchuang_level['id'] . ')';
+            // 获取所有允许分红的级别信息
+            $fenhong_levels = model('vip_level')->field('id,level_name')->where(array('id' => $yeji_fenhong_level_ids))->order('level_sort ASC')->select();
+            $level_map = array();
+            $level_names = array();
+            foreach ($fenhong_levels as $level) {
+                $level_map[$level['id']] = $level['level_name'];
+                $level_names[] = $level['level_name'];
+            }
             
-            // 获取所有联创级别的用户
-            $lianchuang_users = model('distribute_account')->field('uid,can_tihuoquan_num')->where(array('uniacid' => $this->uniacid, 'level_id' => $lianchuang_level['id']))->select();
+            $log_data['fenhong_levels'] = implode(',', $level_names) . '(ID:' . implode(',', $yeji_fenhong_level_ids) . ')';
+            
+            // 获取所有允许分红的级别用户
+            $lianchuang_users = model('distribute_account')->field('uid,can_tihuoquan_num,level_id')->where(array('uniacid' => $this->uniacid, 'level_id' => $yeji_fenhong_level_ids))->select();
             
             $synthesis_count = 0; // 合成次数
             $synthesis_logs = array(); // 合成日志

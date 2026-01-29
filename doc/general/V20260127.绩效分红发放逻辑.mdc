@@ -1,0 +1,283 @@
+# 绩效分红发放逻辑文档
+
+## 概述
+
+绩效分红是针对联创级别用户的一种分红机制，根据平台总绩效和用户持有的分红券数量进行加权分配。
+
+## 功能入口
+
+- **控制器**：`addons/shop/users/userscenter/controller/distribute_award.php`
+- **方法**：`yeji_fenhong_sendOp()`
+- **视图**：`addons/shop/users/userscenter/view/distribute_award/yeji_fenhong_send.php`
+
+## 分红条件
+
+### 用户资格要求
+
+1. **级别要求**：用户必须是联创级别
+   - 联创级别定义：`level_default = 0` 的最高级别（按 `level_sort DESC` 排序）
+   - 查询方式：`model('vip_level')->where(array('level_default' => 0))->order('level_sort DESC')->find()`
+
+2. **分红券要求**：用户必须持有分红券
+   - 字段：`member.fenhong_quan > 0`
+   - 只有持有分红券的联创用户才能参与分红
+
+## 绩效统计
+
+### 数据来源
+
+绩效数据来源于 `shop_goods_tihuoquan` 表（提货券表）
+
+### 统计条件
+
+```php
+$where = array(
+    'state' => array(1, 2),  // 状态为1或2的提货券
+    'used_time >=' => $start_unixtime,  // 使用时间起始
+    'used_time <=' => $end_unixtime     // 使用时间结束
+);
+```
+
+### 统计方式
+
+```php
+$total_yeji = 0;
+$shop_goods_tihuoquan = model('shop_goods_tihuoquan')
+    ->field('amount')
+    ->where($where)
+    ->select();
+foreach ($shop_goods_tihuoquan as $v) {
+    $total_yeji += $v['amount'];
+}
+```
+
+**说明**：统计指定时间范围内，所有状态为1或2的提货券金额总和。
+
+## 分红计算逻辑
+
+### 计算公式
+
+1. **总分红金额**
+   ```
+   总分红金额 = 绩效 × 分红比例（yeji_fenhong_bili）%
+   ```
+
+2. **每张分红券价值**
+   ```
+   每张分红券价值 = 总分红金额 / 总分红券数
+   ```
+   其中：总分红券数 = 所有联创用户的分红券总和（`SUM(fenhong_quan)`）
+
+3. **用户分红金额**
+   ```
+   用户分红金额 = 每张分红券价值 × 用户持有分红券数
+   ```
+
+### 代码实现
+
+```php
+// 1. 获取总分红券数
+$res = model('member')
+    ->field('SUM(fenhong_quan) as total_fenhong_quan')
+    ->where(array('level_id' => $lianchuang_level['id']))
+    ->find();
+
+// 2. 获取所有联创用户及其分红券数量
+$lc_members = model('member')
+    ->field('uid,fenhong_quan')
+    ->where(array('level_id' => $lianchuang_level['id']))
+    ->select();
+
+// 3. 计算每个用户的分红金额
+foreach ($lc_members as $v) {
+    // 每张分红券价值
+    $per_quan_value = bcdiv(
+        ($yeji * config('yeji_fenhong_bili') * 0.01), 
+        $res['total_fenhong_quan'], 
+        2
+    );
+    
+    // 用户分红金额 = 每张分红券价值 × 用户分红券数
+    $detail_bonus = priceFormat($per_quan_value * $v['fenhong_quan']);
+    
+    // 如果分红金额 <= 0，跳过
+    if ($detail_bonus <= 0) {
+        continue;
+    }
+}
+```
+
+### 配置参数
+
+- **分红比例**：`yeji_fenhong_bili`（配置项）
+  - 配置路径：系统配置 → 分销设置
+  - 单位：百分比（%）
+  - 示例：如果设置为 10，表示绩效的 10% 用于分红
+
+## 发放流程
+
+### 1. 参数验证
+
+```php
+// 验证绩效金额
+$yeji = input('yeji', 0, 'floatval');
+if ($yeji <= 0) {
+    output_error('绩效不能为空');
+}
+
+// 验证时间范围
+$query_start_date = input('query_start_date', '');
+$query_end_date = input('query_end_date', '');
+if (!$start_unixtime || !$end_unixtime) {
+    output_error('请选择时间');
+}
+
+// 验证是否有分红券
+if (!$res['total_fenhong_quan']) {
+    output_error('当前暂无分红券');
+}
+```
+
+### 2. 计算分红数据
+
+遍历所有联创用户，计算每个人的分红金额，构建分红记录数据：
+
+```php
+$detail_data[] = array(
+    'uniacid' => 1,
+    'uid' => $v['uid'],
+    'detail_bonus' => $detail_bonus,  // 分红金额
+    'detail_desc' => $desc,            // 分红描述
+    'detail_addtime' => time(),
+    'detail_status' => ORDER_STATE_SUCCESS,  // 状态：已成功
+    'type' => 2,                        // 类型：2=绩效分红
+    'total_turnover' => $yeji,          // 总绩效
+);
+```
+
+**分红描述格式**：
+```
+获得绩效分红{金额}元，可用分红券数量{数量}，每张分红券值{价值}元
+```
+
+### 3. 保存分红记录
+
+```php
+if ($detail_data) {
+    // 批量插入分红记录
+    model('distribute_fenhong_record_detail')->insertAll($detail_data);
+}
+```
+
+**数据表**：`fxy_distribute_fenhong_record_detail`
+
+**字段说明**：
+- `uniacid`：租户ID
+- `uid`：用户ID
+- `detail_bonus`：分红金额
+- `detail_desc`：分红描述
+- `detail_addtime`：添加时间
+- `detail_status`：状态（ORDER_STATE_SUCCESS=成功）
+- `type`：类型（2=绩效分红）
+- `total_turnover`：总绩效
+
+### 4. 增加用户余额
+
+```php
+foreach ($detail_data as $v) {
+    $logic_pd = logic('predeposit');
+    $data_pd = array(
+        'uid' => $v['uid'],
+        'member_name' => '',
+        'amount' => $v['detail_bonus'],
+        'order_sn' => '',
+        'lg_desc' => $v['detail_desc'],
+    );
+    // 增加用户余额（佣金收入）
+    $logic_pd->changePd('commission_in', $data_pd);
+}
+```
+
+**说明**：
+- 调用 `logic('predeposit')->changePd()` 增加用户余额
+- 类型：`commission_in`（佣金收入）
+- 金额：分红金额
+- 描述：分红描述信息
+
+### 5. 清空分红券
+
+```php
+// 清空所有联创用户的分红券
+model('member')
+    ->where(array('level_id' => $lianchuang_level['id']))
+    ->update('fenhong_quan=0');
+```
+
+**说明**：
+- 分红发放后，所有联创用户的分红券都会被清空（`fenhong_quan=0`）
+- 这是为了防止重复分红
+- 分红券的累计数量保存在 `total_fenhong_quan` 字段中，不会被清空
+
+## 数据流程
+
+```
+1. 输入绩效金额和时间范围
+   ↓
+2. 验证参数（绩效、时间、分红券）
+   ↓
+3. 获取联创级别和联创用户列表
+   ↓
+4. 计算总分红券数
+   ↓
+5. 遍历联创用户，计算每人分红金额
+   ↓
+6. 保存分红记录到 distribute_fenhong_record_detail
+   ↓
+7. 增加用户余额（通过 predeposit logic）
+   ↓
+8. 清空所有联创用户的分红券
+   ↓
+9. 返回成功结果
+```
+
+## 分红类型说明
+
+系统中有多种分红类型，通过 `type` 字段区分：
+
+- `type = 1`：加权分红（`jiaquan_fenhong_sendOp`）
+- `type = 2`：绩效分红（`yeji_fenhong_sendOp`）**← 本文档说明的类型**
+- `type = 3`：零售加权分红（`lingshou_fenhong_sendOp`）
+
+## 注意事项
+
+1. **分红券清空时机**：分红发放后，所有联创用户的分红券都会被清空，无论是否参与本次分红
+2. **分红金额精度**：使用 `priceFormat()` 和 `bcdiv()` 函数确保金额计算的精度
+3. **分红券价值计算**：每张分红券的价值 = 总分红金额 / 总分红券数，所有用户的分红券价值相同
+4. **时间范围**：绩效统计基于提货券的 `used_time`（使用时间）字段
+5. **状态过滤**：只统计状态为1或2的提货券（`state IN (1, 2)`）
+
+## 相关文件
+
+- **控制器**：`addons/shop/users/userscenter/controller/distribute_award.php`
+- **视图**：`addons/shop/users/userscenter/view/distribute_award/yeji_fenhong_send.php`
+- **数据表**：`fxy_distribute_fenhong_record_detail`
+- **配置项**：`yeji_fenhong_bili`（绩效分红比例）
+
+## 示例
+
+假设：
+- 总绩效：100,000 元
+- 分红比例：10%
+- 总分红券数：100 张
+- 用户A持有分红券：10 张
+- 用户B持有分红券：20 张
+
+计算过程：
+1. 总分红金额 = 100,000 × 10% = 10,000 元
+2. 每张分红券价值 = 10,000 / 100 = 100 元
+3. 用户A分红 = 100 × 10 = 1,000 元
+4. 用户B分红 = 100 × 20 = 2,000 元
+
+## 更新记录
+
+- 2026-01-27：创建文档，记录绩效分红发放逻辑

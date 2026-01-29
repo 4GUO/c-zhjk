@@ -159,7 +159,22 @@ class shop_queue
     }
     //合成分红券
     public function tihuoquan_to_fenhongquan($param) {
-		$lianchuang_level = model('vip_level')->field('id')->where(array('level_default' => 0))->order('level_sort DESC')->find();
+		// 获取用户的uniacid
+		$member_info = model('member')->field('uniacid')->where(array('uid' => $param['uid']))->find();
+		$uniacid = isset($member_info['uniacid']) ? $member_info['uniacid'] : 1;
+		
+		// 获取允许绩效分红的级别ID列表
+		$yeji_fenhong_level_ids = get_yeji_fenhong_level_ids($uniacid);
+		if (empty($yeji_fenhong_level_ids)) {
+			// 如果没有配置，保持向后兼容：使用联创级别
+			$lianchuang_level = model('vip_level')->field('id')->where(array('level_default' => 0))->order('level_sort DESC')->find();
+			$yeji_fenhong_level_ids = $lianchuang_level ? array($lianchuang_level['id']) : array();
+		}
+		
+		if (empty($yeji_fenhong_level_ids)) {
+			return true;
+		}
+		
 		$dis_account = model('distribute_account')->getInfo(array('uid' => $param['uid']), 'dis_path');
 		$parent = $dis_account['dis_path'] ? explode(',', trim($dis_account['dis_path'], ',')) : array();
 		$parent = array_reverse($parent);
@@ -173,8 +188,13 @@ class shop_queue
 			$distributor_levels[$rr['uid']] = $rr['level_id'];
 		}
 		unset($result);
+		
+		$target_uid = null;
+		$up_accounts = array();
+		
 		foreach ($parent as $uid) {
-			if ($distributor_levels[$uid] == $lianchuang_level['id']) {
+			// 检查该用户是否在允许分红的级别列表中
+			if (in_array($distributor_levels[$uid], $yeji_fenhong_level_ids)) {
 				$invite_list = model('distribute_account')->field('uid,can_tihuoquan_num')->where(array('inviter_id' => $uid))->select();
 				if (count($invite_list) < 3) {
 				    continue;
@@ -191,21 +211,18 @@ class shop_queue
 					}
 				}
 				if (count($up_accounts) >= 3) {
-					$lc_uid = $uid;
-					break;
+					$target_uid = $uid;
+					break; // 找到第一个满足条件的就停止（保持原有逻辑）
 				}
 			}
 		}
-		//var_dump($up_accounts);exit;
-        //lib\logging::write(var_export($up_accounts, true));
-		if (!empty($lc_uid) && !empty($up_accounts)) {
+		
+		if (!empty($target_uid) && !empty($up_accounts)) {
 			foreach($up_accounts as $account) {
 				model('member')->where(array('uid' => $account['uid']))->update('can_tihuoquan_num=can_tihuoquan_num-1');
 				model('distribute_account')->where(array('uid' => $account['uid']))->update('can_tihuoquan_num=can_tihuoquan_num-1');
 			}
-			//lib\logging::write(var_export($lc_uid, true));
-			model('member')->where(array('uid' => $lc_uid))->update('fenhong_quan=fenhong_quan+1,total_fenhong_quan=total_fenhong_quan+1');
-
+			model('member')->where(array('uid' => $target_uid))->update('fenhong_quan=fenhong_quan+1,total_fenhong_quan=total_fenhong_quan+1');
 		}
 		return true;
 	}

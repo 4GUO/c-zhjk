@@ -954,3 +954,16 @@ function asynRun($rule, $param, $debug = false, $timeout = 10) {
 function f_hash($password) {
     return md5('@by_' . md5(md5($password) . config('md5key')));
 }
+/**
+ * 获取允许绩效分红的级别ID列表
+ * @param int $uniacid 租户ID，默认为1
+ * @return array 级别ID数组
+ */
+function get_yeji_fenhong_level_ids($uniacid = 1) {
+    $config = model('config')->getInfo(array('uniacid' => $uniacid), 'yeji_fenhong_level_ids');
+    if (empty($config['yeji_fenhong_level_ids'])) {
+        return array();
+    }
+    $ids = explode(',', trim($config['yeji_fenhong_level_ids'], ','));
+    return array_filter(array_map('intval', $ids));
+}

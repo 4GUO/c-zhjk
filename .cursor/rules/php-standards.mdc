@@ -1,0 +1,60 @@
+---
+description: PHP 编码规范和项目约定
+globs: **/*.php
+alwaysApply: true
+---
+
+# PHP 编码规范
+
+## 文档建设
+- 存放路径为 doc目录
+- 命名 V<时间>.<标题>.mdc
+- 使用 Markdown 语法编写
+- 区分一般文档和任务文档分别存放在 doc/general 和 doc/task 目录下
+
+## 代码风格
+
+- 使用 `array()` 而不是 `[]` 短数组语法
+- 方法命名：控制器方法以 `Op` 结尾（如 `indexOp()`, `area_indexOp()`）
+- 类名使用小写下划线命名（如 `distribute_award`, `ls_his`）
+- 使用命名空间，遵循项目结构
+
+## 命名空间和类结构
+
+```php
+// ✅ Model 示例
+namespace model;
+use base;
+class ls_his extends base\model
+{
+    protected $tableName = 'bin_ls_his';
+}
+
+// ✅ Controller 示例
+namespace userscenter\controller;
+use lib;
+class distribute_award extends control
+{
+    public function indexOp()
+    {
+        // 控制器逻辑
+    }
+}
+```
+
+## 数据库操作
+
+- Model 类继承 `base\model`
+- 使用 `$this->where()`, `$this->field()`, `$this->order()`, `$this->limit()` 等方法
+- 分页查询使用 `getList()` 方法，返回 `array('list' => $list, 'totalpage' => $totalpage)`
+
+## 输入处理
+
+- 使用 `input()` 函数获取请求参数
+- 格式：`input('get.keyword', '', 'trim')` 或 `input('get.page', 1, 'intval')`
+
+## 视图渲染
+
+- 使用 `$this->assign()` 分配变量
+- 使用 `$this->display()` 渲染视图
+- 使用 `page()` 函数生成分页链接

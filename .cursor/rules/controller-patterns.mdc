@@ -1,0 +1,129 @@
+---
+description: Controller 层编码模式和最佳实践
+globs: **/controller/*.php
+alwaysApply: false
+---
+
+# Controller 层编码模式
+
+## Controller 类结构
+
+所有 Controller 类应继承 `control`，并遵循以下模式：
+
+```php
+<?php
+namespace userscenter\controller;
+
+use lib;
+
+class example_controller extends control
+{
+    public function __construct()
+    {
+        parent::_initialize();
+    }
+    
+    // 方法命名：以 Op 结尾
+    public function indexOp()
+    {
+        // 获取输入参数
+        $keyword = input('get.keyword', '');
+        $page = input('get.page', 1, 'intval');
+        
+        // 构建查询条件
+        $where = array();
+        $where['uniacid'] = $this->uniacid;
+        if ($keyword) {
+            $where['name'] = array('like', '%' . $keyword . '%');
+        }
+        
+        // 调用 Model
+        $model = model('example_model');
+        $result = $model->getList($where, '*', 'id DESC', 20, $page);
+        
+        // 分配变量
+        $this->assign('list', $result['list']);
+        $this->assign('page', page($result['totalpage'], array('page' => $page), 'example/index'));
+        
+        // 渲染视图
+        $this->display();
+    }
+}
+```
+
+## 方法命名规范
+
+- 所有公开方法以 `Op` 结尾（如 `indexOp()`, `addOp()`, `editOp()`）
+- 私有方法使用下划线前缀（如 `_validateData()`）
+
+## 输入处理
+
+```php
+// 获取 GET 参数
+$keyword = input('get.keyword', '', 'trim');
+$page = input('get.page', 1, 'intval');
+$status = input('get.status', 0, 'intval');
+
+// 获取 POST 参数
+$data = input('post.');
+$name = input('post.name', '', 'trim');
+
+// 获取日期参数
+$query_start_date = input('query_start_date', '');
+$if_start_date = preg_match('/^20\d{2}-\d{2}-\d{2}$/', $query_start_date);
+$start_unixtime = $if_start_date ? strtotime($query_start_date . '00:00:00') : 0;
+```
+
+## 数据验证
+
+- 使用正则表达式验证日期格式：`/^20\d{2}-\d{2}-\d{2}$/`
+- 时间戳转换：`strtotime($date . '00:00:00')` 或 `strtotime($date . '23:59:59')`
+
+## 视图渲染
+
+```php
+// 分配变量
+$this->assign('list', $list);
+$this->assign('member_list', $member_list);
+
+// 生成分页
+$this->assign('page', page($totalpage, array('page' => $page, 'keyword' => $keyword), 'url/path'));
+
+// 渲染视图（默认使用与方法同名的视图文件）
+$this->display();
+
+// 渲染指定视图
+$this->display('other_view');
+```
+
+## 常用模式
+
+### 搜索功能
+```php
+$keyword = input('get.keyword', '');
+$search_type = input('get.search_type', '');
+if ($keyword) {
+    $search_uids = array();
+    $result = model('member')->getList(array('uniacid' => $this->uniacid, $search_type => '%' . trim($keyword) . '%'), 'uid');
+    foreach ($result['list'] as $r) {
+        $search_uids[] = $r['uid'];
+    }
+    $where['uid'] = $search_uids;
+}
+```
+
+### 日期范围查询
+```php
+$query_start_date = input('query_start_date', '');
+$query_end_date = input('query_end_date', '');
+$if_start_date = preg_match('/^20\d{2}-\d{2}-\d{2}$/', $query_start_date);
+$if_end_date = preg_match('/^20\d{2}-\d{2}-\d{2}$/', $query_end_date);
+$start_unixtime = $if_start_date ? strtotime($query_start_date . '00:00:00') : 0;
+$end_unixtime = $if_end_date ? strtotime($query_end_date . '23:59:59') : 0;
+if ($start_unixtime > 0) {
+    $where['addtime >='] = $start_unixtime;
+}
+if ($end_unixtime > 0) {
+    $where['addtime <='] = $end_unixtime;
+}
+```

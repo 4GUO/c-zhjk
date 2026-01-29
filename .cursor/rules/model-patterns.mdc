@@ -1,0 +1,90 @@
+---
+description: Model 层编码模式和最佳实践
+globs: **/model/*.php
+alwaysApply: false
+---
+
+# Model 层编码模式
+
+## Model 类结构
+
+所有 Model 类应继承 `base\model`，并遵循以下模式：
+
+```php
+<?php
+namespace model;
+use base;
+
+class example_model extends base\model
+{
+    protected $tableName = 'ims_example';
+    
+    // 标准方法：获取列表（支持分页）
+    public function getList($condition = array(), $field = '*', $order = '', $page = null, $get_p = null)
+    {
+        if($page && $get_p){
+            $total = $this->where($condition)->total();
+            $totalpage = ceil($total / $page);
+            $limitpage = ($get_p - 1) * $page;
+            $list = $this->where($condition)->field($field)->order($order)->limit($limitpage, $page)->select();
+        }else{
+            $totalpage = 0;
+            $list = $this->where($condition)->field($field)->order($order)->select();
+        }
+        return array('list' => $list, 'totalpage' => $totalpage);
+    }
+    
+    // 标准方法：获取单条记录
+    public function getInfo($condition = array(), $field = '*')
+    {
+        $result = $this->where($condition)->field($field)->find();
+        return $result;
+    }
+    
+    // 标准方法：添加记录
+    public function add($data)
+    {
+        $result = $this->insert($data);
+        return $result;
+    }
+    
+    // 标准方法：更新记录
+    public function edit($condition = array(), $data = array())
+    {
+        $result = $this->where($condition)->update($data);
+        return $result;
+    }
+    
+    // 标准方法：删除记录
+    public function del($condition = array())
+    {
+        $result = $this->where($condition)->delete();
+        return $result;
+    }
+    
+    // 标准方法：统计数量
+    public function count($condition = array())
+    {
+        $result = $this->where($condition)->total();
+        return $result;
+    }
+}
+```
+
+## 表名规范
+
+- 表名使用 `$tableName` 属性定义
+- 数据库表前缀为 `ims_`（在配置文件中定义）
+- 表名使用下划线命名（如 `bin_ls_his`, `distribute_detail`）
+
+## 查询条件
+
+- 使用数组传递查询条件：`array('uid' => $uid, 'status' => 1)`
+- 支持范围查询：`array('addtime >=' => $start_time, 'addtime <=' => $end_time)`
+- 支持 IN 查询：`array('uid' => array(1, 2, 3))`
+
+## 注意事项
+
+- 所有 Model 方法应返回明确的数据类型
+- 分页查询必须返回 `array('list' => $list, 'totalpage' => $totalpage)` 格式
+- 使用 `model('model_name')` 函数获取 Model 实例

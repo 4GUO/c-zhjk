@@ -114,10 +114,29 @@
 				</dd>
 			</dl>
 			<dl>
-				<dt>联创绩效分红比例：</dt>
+				<dt>代理绩效分红比例：</dt>
 				<dd>
 					<input name='yeji_fenhong_bili' class='text w60' value='<?=$output['config']['yeji_fenhong_bili']?>' type='text' />&nbsp;%
 					<span></span>
+				</dd>
+			</dl>
+			<dl>
+				<dt>绩效分红级别配置：</dt>
+				<dd>
+					<?php
+					$selected_level_ids = isset($output['selected_level_ids']) ? $output['selected_level_ids'] : array();
+					foreach($output['member_levels'] as $level) {
+					?>
+						<label style='margin-right: 15px; display: inline-block; margin-bottom: 8px;'>
+							<input type='checkbox'
+								   name='yeji_fenhong_level_ids[]'
+								   value='<?=$level['id']?>'
+								   <?php if(in_array($level['id'], $selected_level_ids)) { ?>checked='checked'<?php } ?> />
+							<?=$level['level_name']?>
+						</label>
+					<?php } ?>
+					<p class='hint'>选中表示该级别支持绩效分红，未选中表示不支持</p>
+                    <p class='hint'>选中表示该级别支持分红券合并，未选中表示不支持</p>
 				</dd>
 			</dl>
 			<dl>

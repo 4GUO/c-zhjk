@@ -1,0 +1,66 @@
+---
+description: 安全编码规范和注意事项
+alwaysApply: true
+---
+
+# 安全编码规范
+
+## SQL 注入防护
+
+- 使用框架提供的查询方法，不要直接拼接 SQL
+- 使用参数化查询：`$this->where($condition)->select()`
+- 避免使用 `$this->query()` 直接执行 SQL，除非必要
+
+```php
+// ✅ GOOD - 使用框架方法
+$where = array('uid' => $uid, 'status' => 1);
+$list = $this->where($where)->select();
+
+// ❌ BAD - 直接拼接 SQL
+$sql = "SELECT * FROM table WHERE uid = " . $uid;
+```
+
+## XSS 防护
+
+- 输出到视图前进行转义
+- 使用框架提供的转义函数
+- 富文本内容需要特殊处理
+
+## 输入验证
+
+- 所有用户输入必须验证和过滤
+- 使用 `input()` 函数的第三个参数进行类型转换
+- 日期格式使用正则验证：`/^20\d{2}-\d{2}-\d{2}$/`
+
+```php
+// ✅ GOOD
+$page = input('get.page', 1, 'intval');
+$keyword = input('get.keyword', '', 'trim');
+
+// ❌ BAD
+$page = $_GET['page'];
+```
+
+## 文件上传
+
+- 验证文件类型和大小
+- 使用 `UPLOADFILES_PATH` 常量定义上传目录
+- 文件名使用安全的命名规则
+
+## 权限控制
+
+- Controller 中检查 `$this->uniacid` 确保多租户隔离
+- 敏感操作需要权限验证
+- 定时任务考虑添加密码验证（如 `crontab/controller/safe.php`）
+
+## 配置安全
+
+- 数据库密码等敏感信息存储在配置文件中
+- 配置文件不应提交到版本控制（如果包含敏感信息）
+- `data/` 目录建议移动到非 Web 可访问目录
+
+## 会话安全
+
+- 使用框架的会话管理
+- 设置合理的会话过期时间（`SESSION_EXPIRE`）
+- 使用安全的 Cookie 密钥（`COOKIE_KEY`）

@@ -1,0 +1,470 @@
+# 分红券合并改造与绩效分红改造 - 实现分析
+
+## 任务概述
+
+本次改造需要实现三个主要任务：
+1. **配置改造**：在分销系统基础设置页面增加绩效分红级别配置
+2. **绩效分红改造**：支持多级别的绩效分红发放
+3. **分红券合并改造**：支持所有绩效分红级别的分红券合并
+
+## 任务1：配置改造
+
+### 需求分析
+- 将"联创绩效分红比例"改为"代理绩效分红比例"
+- 在"代理绩效分红比例"下新增一行配置（绩效分红级别配置）
+- 复选框的级别从会员级别动态获取
+- 复选框选中表示该级别支持绩效分红，未选中表示不支持绩效分红
+
+### 涉及文件
+1. **视图文件**：`addons/shop/users/userscenter/view/config/distribute.php`
+2. **控制器文件**：`addons/shop/users/userscenter/controller/config.php`
+
+### 实现方案
+
+#### 1.1 数据库配置项设计
+- **配置项名称**：`yeji_fenhong_level_ids`
+- **存储格式**：逗号分隔的级别ID字符串，如 `"1,3,5"` 或空字符串 `""`
+- **存储位置**：`fxy_config` 表的 `yeji_fenhong_level_ids` 字段
+
+#### 1.2 控制器改造（config.php）
+
+**修改 `distributeOp()` 方法**：
+
+```php
+// 在提交处理部分，新增配置项保存
+if (chksubmit()) {
+    $data = array(
+        // ... 现有配置项 ...
+        'yeji_fenhong_bili' => input('yeji_fenhong_bili', 0, 'floatval'),
+        // 新增：绩效分红级别配置（复选框选中的级别ID，逗号分隔）
+        'yeji_fenhong_level_ids' => input('yeji_fenhong_level_ids', ''),
+        // ... 其他配置项 ...
+    );
+    model('config')->edit(array('uniacid' => $this->uniacid), $data);
+    output_data(array('msg' => '操作成功', 'url' => users_url('config/distribute')));
+}
+
+// 在显示部分，获取已选中的级别ID
+$selected_level_ids = array();
+if (!empty($this->setting_config['yeji_fenhong_level_ids'])) {
+    $selected_level_ids = explode(',', trim($this->setting_config['yeji_fenhong_level_ids'], ','));
+}
+$this->assign('selected_level_ids', $selected_level_ids);
+```
+
+#### 1.3 视图改造（distribute.php）
+
+**修改标签文本**：
+```php
+// 第117行：将"联创绩效分红比例"改为"代理绩效分红比例"
+<dt>代理绩效分红比例：</dt>
+```
+
+**新增绩效分红级别配置**：
+```php
+<dl>
+    <dt>代理绩效分红比例：</dt>
+    <dd>
+        <input name='yeji_fenhong_bili' class='text w60' value='<?=$output['config']['yeji_fenhong_bili']?>' type='text' />&nbsp;%
+        <span></span>
+    </dd>
+</dl>
+<dl>
+    <dt>绩效分红级别配置：</dt>
+    <dd>
+        <?php 
+        $selected_level_ids = isset($output['selected_level_ids']) ? $output['selected_level_ids'] : array();
+        foreach($output['member_levels'] as $level) { 
+        ?>
+            <label style='margin-right: 15px;'>
+                <input type='checkbox' 
+                       name='yeji_fenhong_level_ids[]' 
+                       value='<?=$level['id']?>' 
+                       <?php if(in_array($level['id'], $selected_level_ids)) { ?>checked='checked'<?php } ?> />
+                <?=$level['level_name']?>
+            </label>
+        <?php } ?>
+        <p class='hint'>选中表示该级别支持绩效分红，未选中表示不支持绩效分红</p>
+    </dd>
+</dl>
+```
+
+**注意**：需要将复选框数组转换为逗号分隔的字符串，可以在控制器中处理：
+```php
+$yeji_fenhong_level_ids = input('yeji_fenhong_level_ids', array());
+$data['yeji_fenhong_level_ids'] = is_array($yeji_fenhong_level_ids) 
+    ? implode(',', $yeji_fenhong_level_ids) 
+    : '';
+```
+
+### 1.4 辅助函数（可选）
+
+可以在 `core/helpers/core.php` 中新增辅助函数：
+```php
+/**
+ * 获取允许绩效分红的级别ID列表
+ * @param int $uniacid 租户ID
+ * @return array 级别ID数组
+ */
+function get_yeji_fenhong_level_ids($uniacid = 1) {
+    $config = model('config')->getInfo(array('uniacid' => $uniacid), 'yeji_fenhong_level_ids');
+    if (empty($config['yeji_fenhong_level_ids'])) {
+        return array();
+    }
+    $ids = explode(',', trim($config['yeji_fenhong_level_ids'], ','));
+    return array_filter(array_map('intval', $ids));
+}
+```
+
+---
+
+## 任务2：绩效分红改造
+
+### 需求分析
+- 绩效分红发放时，支持多级别的绩效分红发放
+- 根据后台配置的允许分红的级别判定哪些级别可以参与分红
+- 不再只针对联创级别，而是支持所有配置的级别
+
+### 涉及文件
+1. **控制器文件**：`addons/shop/users/userscenter/controller/distribute_award.php`
+   - 方法：`yeji_fenhong_sendOp()`
+2. **视图文件**：`addons/shop/users/userscenter/view/distribute_award/yeji_fenhong_send.php`
+
+### 实现方案
+
+#### 2.1 控制器改造（distribute_award.php）
+
+**核心改造点**：
+
+1. **获取允许分红的级别列表**（替代原来的单一联创级别）：
+```php
+// 原代码（第319行）：
+$lianchuang_level = model('vip_level')->where(array('level_default' => 0))->order('level_sort DESC')->find();
+
+// 改造后：
+// 获取允许绩效分红的级别ID列表
+$yeji_fenhong_level_ids = get_yeji_fenhong_level_ids($this->uniacid);
+if (empty($yeji_fenhong_level_ids)) {
+    // 如果没有配置，保持向后兼容：使用联创级别
+    $lianchuang_level = model('vip_level')->where(array('level_default' => 0))->order('level_sort DESC')->find();
+    $yeji_fenhong_level_ids = $lianchuang_level ? array($lianchuang_level['id']) : array();
+}
+
+// 获取所有允许分红的级别信息（用于显示）
+$fenhong_levels = model('vip_level')->field('id,level_name')->where(array('id' => $yeji_fenhong_level_ids))->select();
+```
+
+2. **查询符合条件的用户**（第335-339行）：
+```php
+// 原代码：
+$res = model('member')->field('SUM(fenhong_quan) as total_fenhong_quan')->where(array('level_id' => $lianchuang_level['id']))->find();
+$lc_members = model('member')->field('uid,fenhong_quan')->where(array('level_id' => $lianchuang_level['id']))->select();
+
+// 改造后：
+$res = model('member')->field('SUM(fenhong_quan) as total_fenhong_quan')->where(array('level_id' => $yeji_fenhong_level_ids))->find();
+$lc_members = model('member')->field('uid,fenhong_quan,level_id')->where(array('level_id' => $yeji_fenhong_level_ids))->select();
+```
+
+3. **清空分红券**（第357行）：
+```php
+// 原代码：
+model('member')->where(array('level_id' => $lianchuang_level['id']))->update('fenhong_quan=0');
+
+// 改造后：
+model('member')->where(array('level_id' => $yeji_fenhong_level_ids))->update('fenhong_quan=0');
+```
+
+4. **显示部分改造**（第374行之后）：
+```php
+// 获取所有允许分红的级别信息
+$fenhong_levels = model('vip_level')->field('id,level_name')->where(array('id' => $yeji_fenhong_level_ids))->select();
+
+// 计算总分红券数（用于显示）
+$res = model('member')->field('SUM(fenhong_quan) as total_fenhong_quan')->where(array('level_id' => $yeji_fenhong_level_ids))->find();
+
+// 获取详细成员列表（用于显示）
+$lc_members = model('member')
+    ->field('m.uid,m.fenhong_quan,m.total_fenhong_quan,m.level_id,vl.level_name')
+    ->alias('m')
+    ->join('vip_level vl', 'm.level_id = vl.id', 'left')
+    ->where(array('m.level_id' => $yeji_fenhong_level_ids, 'm.fenhong_quan >' => 0))
+    ->select();
+
+// 计算每个成员的分红比例
+$total_fenhong_quan = $res['total_fenhong_quan'] ?: 1;
+foreach ($lc_members as &$member) {
+    $member['fenhong_bili'] = $total_fenhong_quan > 0 
+        ? round(($member['fenhong_quan'] / $total_fenhong_quan) * 100, 2) 
+        : 0;
+    // 获取用户信息
+    $user_info = model('member')->field('nickname,mobile')->where(array('uid' => $member['uid']))->find();
+    $member['nickname'] = $user_info['nickname'] ?? '';
+    $member['mobile'] = $user_info['mobile'] ?? '';
+}
+
+$this->assign('fenhong_levels', $fenhong_levels);
+$this->assign('total_fenhong_quan', $res['total_fenhong_quan'] ?? 0);
+$this->assign('detailed_member_list', $lc_members);
+```
+
+#### 2.2 视图改造（yeji_fenhong_send.php）
+
+**修改分红条件显示**（第48-53行）：
+```php
+<dl>
+    <dt>分红条件：</dt>
+    <dd>
+        <?php if (!empty($output['fenhong_levels'])): ?>
+            以下级别且持有分红券：
+            <?php foreach($output['fenhong_levels'] as $level): ?>
+                <span class='highlight'><?=$level['level_name']?></span>
+            <?php endforeach; ?>
+        <?php else: ?>
+            <span class='highlight'>未配置绩效分红级别</span>
+        <?php endif; ?>
+    </dd>
+</dl>
+```
+
+**修改详细人员列表标题**（第63行）：
+```php
+<h3 style='margin-bottom: 15px; color: #333; border-bottom: 2px solid #007cba; padding-bottom: 8px;'>
+    <i class='icon-users'></i> 符合分红条件的用户列表
+</h3>
+```
+
+**修改空数据提示**（第108行）：
+```php
+<div class='alert alert-info' style='margin-top: 15px;'>
+    <i class='icon-info-sign'></i> 当前没有持有分红券的符合条件用户
+</div>
+```
+
+### 2.3 数据一致性考虑
+
+- 确保所有配置的级别用户都能参与分红计算
+- 分红券清空时，只清空配置级别用户的分红券
+- 保持向后兼容：如果没有配置，默认使用联创级别
+
+---
+
+## 任务3：分红券合并改造
+
+### 需求分析
+- 触发分红券合并的条件改造，支持所有绩效分红级别的分红券合并
+- 不再只针对联创级别，而是支持所有配置的允许分红的级别
+- 从激活用户的上级路径中，查找所有配置的级别用户，而不仅仅是联创级别
+
+### 涉及文件
+1. **逻辑文件**：`addons/shop/common/logic/shop_queue.php`
+   - 方法：`tihuoquan_to_fenhongquan($param)`
+2. **控制器文件**：`addons/shop/users/userscenter/controller/distribute_award.php`
+   - 方法：`manual_fenhongquanOp()` - 预览
+   - 方法：`execute_manual_fenhongquanOp()` - 执行
+
+### 实现方案
+
+#### 3.1 自动合并逻辑改造（shop_queue.php）
+
+**核心改造点**（第161-211行）：
+
+1. **获取允许分红的级别列表**（替代原来的单一联创级别）：
+```php
+// 原代码（第162行）：
+$lianchuang_level = model('vip_level')->field('id')->where(array('level_default' => 0))->order('level_sort DESC')->find();
+
+// 改造后：
+// 获取允许绩效分红的级别ID列表
+$yeji_fenhong_level_ids = get_yeji_fenhong_level_ids();
+if (empty($yeji_fenhong_level_ids)) {
+    // 如果没有配置，保持向后兼容：使用联创级别
+    $lianchuang_level = model('vip_level')->field('id')->where(array('level_default' => 0))->order('level_sort DESC')->find();
+    $yeji_fenhong_level_ids = $lianchuang_level ? array($lianchuang_level['id']) : array();
+}
+```
+
+2. **查找符合条件的上级用户**（第176-198行）：
+```php
+// 原代码：
+foreach ($parent as $uid) {
+    if ($distributor_levels[$uid] == $lianchuang_level['id']) {
+        // ... 处理逻辑 ...
+    }
+}
+
+// 改造后：
+foreach ($parent as $uid) {
+    // 检查该用户是否在允许分红的级别列表中
+    if (in_array($distributor_levels[$uid], $yeji_fenhong_level_ids)) {
+        // ... 处理逻辑保持不变 ...
+        // 注意：这里需要处理多个级别的情况，可能需要找到第一个满足条件的就停止
+        // 或者支持多个级别用户都能获得分红券（根据业务需求）
+        
+        $invite_list = model('distribute_account')->field('uid,can_tihuoquan_num')->where(array('inviter_id' => $uid))->select();
+        if (count($invite_list) < 3) {
+            continue;
+        }
+        
+        $up_accounts = array();
+        foreach ($invite_list as $v) {
+            if (count($up_accounts) >= 3) {
+                break;
+            }
+            if ($v['can_tihuoquan_num'] > 0) {
+                $up_accounts[] = $v;
+            }
+        }
+        
+        if (count($up_accounts) >= 3) {
+            $target_uid = $uid; // 使用通用变量名，不再限定为联创
+            break; // 找到第一个满足条件的就停止（保持原有逻辑）
+        }
+    }
+}
+```
+
+3. **执行合并操作**（第201-209行）：
+```php
+// 原代码：
+if (!empty($lc_uid) && !empty($up_accounts)) {
+    // ... 扣除和增加逻辑 ...
+}
+
+// 改造后：
+if (!empty($target_uid) && !empty($up_accounts)) {
+    // 扣除激活提货券（保持不变）
+    foreach($up_accounts as $account) {
+        model('member')->where(array('uid' => $account['uid']))->update('can_tihuoquan_num=can_tihuoquan_num-1');
+        model('distribute_account')->where(array('uid' => $account['uid']))->update('can_tihuoquan_num=can_tihuoquan_num-1');
+    }
+    
+    // 增加分红券（保持不变）
+    model('member')->where(array('uid' => $target_uid))->update('fenhong_quan=fenhong_quan+1,total_fenhong_quan=total_fenhong_quan+1');
+}
+```
+
+#### 3.2 手动发放逻辑改造（distribute_award.php）
+
+**改造 `manual_fenhongquanOp()` 方法**（第808行开始）：
+
+```php
+// 原代码（第812行）：
+$lianchuang_level = model('vip_level')->field('id,level_name')->where(array('uniacid' => $this->uniacid, 'level_default' => 0))->order('level_sort DESC')->find();
+
+// 改造后：
+// 获取允许绩效分红的级别ID列表
+$yeji_fenhong_level_ids = get_yeji_fenhong_level_ids($this->uniacid);
+if (empty($yeji_fenhong_level_ids)) {
+    // 如果没有配置，保持向后兼容
+    $lianchuang_level = model('vip_level')->field('id,level_name')->where(array('uniacid' => $this->uniacid, 'level_default' => 0))->order('level_sort DESC')->find();
+    $yeji_fenhong_level_ids = $lianchuang_level ? array($lianchuang_level['id']) : array();
+}
+
+// 获取所有允许分红的级别信息
+$fenhong_levels = model('vip_level')->field('id,level_name')->where(array('id' => $yeji_fenhong_level_ids))->select();
+
+// 原代码（第818行）：
+$lianchuang_users = model('distribute_account')->field('uid,can_tihuoquan_num')->where(array('uniacid' => $this->uniacid, 'level_id' => $lianchuang_level['id']))->select();
+
+// 改造后：
+$lianchuang_users = model('distribute_account')->field('uid,can_tihuoquan_num,level_id')->where(array('uniacid' => $this->uniacid, 'level_id' => $yeji_fenhong_level_ids))->select();
+```
+
+**改造 `execute_manual_fenhongquanOp()` 方法**：
+
+类似地，需要将单一联创级别的查询改为多级别查询。
+
+### 3.3 业务逻辑考虑
+
+**重要决策点**：
+
+1. **合并优先级**：
+   - 方案A：从下往上查找，找到第一个满足条件的级别用户就停止（保持原有逻辑）
+   - 方案B：支持多个级别用户都能获得分红券（需要修改逻辑，可能更复杂）
+
+2. **推荐方案**：采用方案A，保持原有逻辑的一致性
+   - 从激活用户的上级路径中，从下往上查找
+   - 找到第一个在允许分红级别列表中且满足合并条件的用户
+   - 执行合并后停止
+
+3. **数据一致性**：
+   - 确保 `member` 表和 `distribute_account` 表的 `can_tihuoquan_num` 同步更新
+   - 确保 `fenhong_quan` 和 `total_fenhong_quan` 正确增加
+
+---
+
+## 实现步骤总结
+
+### 步骤1：配置改造
+1. 修改 `config.php` 控制器，新增 `yeji_fenhong_level_ids` 配置项处理
+2. 修改 `distribute.php` 视图，更改标签文本并新增复选框配置
+3. 创建辅助函数 `get_yeji_fenhong_level_ids()`
+
+### 步骤2：绩效分红改造
+1. 修改 `distribute_award.php` 的 `yeji_fenhong_sendOp()` 方法
+2. 将单一联创级别查询改为多级别查询
+3. 修改视图显示，支持显示多个级别
+
+### 步骤3：分红券合并改造
+1. 修改 `shop_queue.php` 的 `tihuoquan_to_fenhongquan()` 方法
+2. 修改 `distribute_award.php` 的手动发放相关方法
+3. 测试合并逻辑的正确性
+
+### 步骤4：测试验证
+1. 配置多个级别支持绩效分红
+2. 测试绩效分红发放功能
+3. 测试分红券合并功能
+4. 验证数据一致性
+
+---
+
+## 注意事项
+
+1. **向后兼容性**：
+   - 如果没有配置 `yeji_fenhong_level_ids`，默认使用联创级别
+   - 确保现有功能不受影响
+
+2. **数据迁移**：
+   - 如果系统已有数据，需要考虑是否需要数据迁移
+   - 建议在配置页面提供默认值设置
+
+3. **性能考虑**：
+   - 多级别查询时，注意索引的使用
+   - 避免在循环中进行数据库查询
+
+4. **错误处理**：
+   - 配置为空时的处理
+   - 级别被删除后的处理
+   - 数据不一致的处理
+
+5. **日志记录**：
+   - 建议在关键操作处添加日志记录
+   - 便于问题排查和数据追踪
+
+---
+
+## 相关文件清单
+
+### 需要修改的文件
+1. `addons/shop/users/userscenter/controller/config.php` - 配置保存
+2. `addons/shop/users/userscenter/view/config/distribute.php` - 配置界面
+3. `addons/shop/users/userscenter/controller/distribute_award.php` - 绩效分红和手动发放
+4. `addons/shop/users/userscenter/view/distribute_award/yeji_fenhong_send.php` - 绩效分红界面
+5. `addons/shop/common/logic/shop_queue.php` - 自动合并逻辑
+
+### 可能需要新增的文件
+1. `addons/shop/core/helpers/core.php` - 辅助函数（如果不存在则新增）
+
+### 数据库变更
+- `fxy_config` 表需要新增字段：`yeji_fenhong_level_ids` (VARCHAR类型，存储逗号分隔的级别ID)
+
+---
+
+## 验收标准
+
+1. ✅ 配置页面可以正确显示和保存绩效分红级别配置
+2. ✅ 绩效分红发放支持多级别用户参与
+3. ✅ 分红券合并支持所有配置的级别
+4. ✅ 向后兼容：未配置时使用联创级别
+5. ✅ 数据一致性：所有相关表的数据同步更新
+6. ✅ 界面显示正确：显示所有符合条件的级别和用户
