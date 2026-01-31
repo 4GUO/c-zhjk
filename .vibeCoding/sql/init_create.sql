@@ -4702,7 +4702,6 @@ LOCK TABLES `ims_fxy_config` WRITE;
 /*!40000 ALTER TABLE `ims_fxy_config` ENABLE KEYS */;
 UNLOCK TABLES;
 
-
 # 转储表 ims_fxy_distribute_account
 # ------------------------------------------------------------
 
